@@ -21,6 +21,8 @@ import bisect
 import datetime as dt
 import json
 import math
+import time
+import urllib.error
 import urllib.request
 
 from sleeper import SleeperClient
@@ -32,10 +34,16 @@ ESPN_TO_SLEEPER_TEAM = {"WSH": "WAS"}
 GAME_SECONDS = 3600
 
 
-def _fetch(url):
+def _fetch(url, retries=3):
     req = urllib.request.Request(url, headers={"User-Agent": "montana60-winprob"})
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        return json.load(resp)
+    for attempt in range(retries + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                return json.load(resp)
+        except urllib.error.URLError:
+            if attempt == retries:
+                raise
+            time.sleep(2 ** attempt)
 
 
 def _ts(s):
@@ -60,7 +68,9 @@ def projections(season, week, scoring):
         f"https://api.sleeper.app/projections/nfl/{season}/{week}?season_type=regular"
         + "".join(f"&position[]={p}" for p in ["QB", "RB", "WR", "TE", "K", "DEF"])
     )
-    return {r["player_id"]: max(score_stats(r.get("stats") or {}, scoring), 0.0) for r in rows}
+    proj = {r["player_id"]: max(score_stats(r.get("stats") or {}, scoring), 0.0) for r in rows}
+    teams = {r["player_id"]: r["team"] for r in rows if r.get("team")}  # team as of that week
+    return proj, teams
 
 
 def espn_games(season, week):
@@ -183,7 +193,7 @@ def win_probability(league_id, week=None):
     league = client.league(league_id)
     scoring = league["scoring_settings"]
     players = client.players()
-    proj = projections(season, week, scoring)
+    proj, week_teams = projections(season, week, scoring)
     teams = {r["roster_id"]: r["team"] for r in client.standings(league_id)}
     matchups = client.matchups(league_id, week)
 
@@ -203,7 +213,7 @@ def win_probability(league_id, week=None):
                 continue
             info = players.get(pid, {})
             pos = info.get("position") or ("DEF" if pid.isalpha() else None)
-            team = pid if pos == "DEF" else info.get("team")
+            team = pid if pos == "DEF" else week_teams.get(pid) or info.get("team")
             game = by_team.get(team)
             tl = timelines.get(game["id"]) if game else None
             espn_id = None
@@ -216,7 +226,11 @@ def win_probability(league_id, week=None):
                 curve.times = [0]
                 curve.done = True
             p = proj.get(pid, 0.0)
-            curves.append({"pid": pid, "curve": curve, "proj": p, "sd": player_sd(p, pos)})
+            curves.append({"pid": pid, "curve": curve, "proj": p, "sd": player_sd(p, pos),
+                           "name": info.get("full_name") or pid, "pos": pos,
+                           "game": game["name"] if game else None,
+                           "kickoff": game["kickoff"] if game else None,
+                           "pending": bool(game and game["state"] == "pre")})
         sides.setdefault(m["matchup_id"], []).append({"roster_id": m["roster_id"], "team": teams[m["roster_id"]], "points": m["points"], "players": curves})
 
     # Sample every play across the week, plus a pregame point
@@ -254,8 +268,13 @@ def win_probability(league_id, week=None):
         slim = [series[0]] + [s for prev, s in zip(series, series[1:]) if s[1:] != prev[1:]]
         result["matchups"].append({
             "matchup_id": mid,
-            "home": {"team": a["team"], "points": a["points"]},
-            "away": {"team": b["team"], "points": b["points"]},
+            "home": {"team": a["team"], "roster_id": a["roster_id"], "points": a["points"]},
+            "away": {"team": b["team"], "roster_id": b["roster_id"], "points": b["points"]},
+            "pending": [  # starters whose games haven't kicked off
+                {"name": pl["name"], "pos": pl["pos"], "game": pl["game"], "kickoff": pl["kickoff"],
+                 "proj": round(pl["proj"], 2), "side": side}
+                for side, s in (("home", a), ("away", b)) for pl in s["players"] if pl["pending"]
+            ],
             "series": slim,  # [unix_ts, P(home wins), home pts, away pts, home proj, away proj]
         })
     return result
