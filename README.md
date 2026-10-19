@@ -27,3 +27,11 @@ players = c.players()  # full player DB, cached in .cache/ for 24h
 ```
 
 Sleeper can't do write operations through the API (no lineup changes, trades or waivers). Keep usage under about 1000 calls per minute.
+
+## Win probability
+
+`winprob.py` estimates how each matchup's win probability changed over a week. Sleeper doesn't publish its in-app odds, so the script rebuilds them from ESPN play-by-play data and Sleeper projections scored with your league's settings.
+
+```sh
+python3 winprob.py <league_id> [--week N] [--out winprob.json]
+```
