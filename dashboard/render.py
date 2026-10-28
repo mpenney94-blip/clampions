@@ -94,6 +94,7 @@ svg.hl-on [class^="ring-"].sel{opacity:1}
 svg text.star{fill:var(--c4);font-size:19px;paint-order:stroke;stroke:var(--surface);stroke-width:3px;cursor:default}
 svg .lay,svg .lab,svg .sub,svg .lead,svg [class^="ring-"]{pointer-events:none}
 svg.hl-on text.star{opacity:.2}svg.hl-on text.star.sel{opacity:1}
+.grid-t .star{font-size:1.25em;vertical-align:-1px}
 .grid-t td.bn{color:var(--ink3);font-weight:400;font-style:italic}
 .tipwrap{position:relative;padding:8px 0;cursor:help;outline:none}
 .tipwrap:hover .track>span,.tipwrap:focus .track>span{background:var(--a)}
@@ -537,7 +538,8 @@ def round_table(src, rounds):
         for i in range(1, rounds + 1):
             v = r["rounds"].get(i, 0)
             if v <= 0:
-                cells.append('<td class="w muted">–</td>')
+                note = r["round_notes"].get(i)
+                cells.append(f'<td class="w muted"{f" title={chr(34)}{esc(note)}{chr(34)}" if note else ""}>–</td>')
                 continue
             step = max(1, min(7, round(7 * v / mx)))
             fg = "#fff" if step >= 5 else "var(--ink)"
@@ -553,7 +555,7 @@ def round_table(src, rounds):
             f'<th class="n">Total</th></tr></thead>'
             f'<tbody>{"".join(trs)}</tbody></table></div>'
             '<p class="note">Starting-lineup points from each team’s own draft picks, by the round they were taken. Darker = more points; '
-            'hover a cell to see the players. Outlined cells with a ★ are each team’s keeper, taken in that round’s slot; '
+            'hover a cell to see the players (on a “–”, what happened to that pick). Outlined cells with a ★ are each team’s keeper, taken in that round’s slot; '
             '“New picks” is everything else from this year’s draft. Picks that were traded away, dropped or never started count as –.</p>')
 
 

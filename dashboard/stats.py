@@ -313,8 +313,38 @@ def sources(lg):
                 best[kind] = (lg.name_of(pid), v)
         row["best"] = best
         del row["players"]
+        row["round_notes"] = {p["round"]: _pick_note(lg, r, p["player_id"]) for p in lg.picks
+                              if p["roster_id"] == r and row["rounds"].get(p["round"], 0) <= 0}
         out[name] = row
     return out
+
+
+def _pick_note(lg, r, pid):
+    """Why a draft pick has no starting-lineup points for the team that drafted him."""
+    name = lg.name_of(pid)
+    starts = bench = 0
+    for w in lg.weeks:
+        m = next(m for m in lg.matchups[w] if m["roster_id"] == r)
+        if pid in m["starters"]:
+            starts += 1
+        elif pid in (m.get("players") or []):
+            bench += (m.get("players_points") or {}).get(pid, 0)
+    if starts:
+        return f"{name}: started {starts}× for 0 points"
+    left = next((t for t in sorted(lg.transactions, key=lambda t: t["status_updated"])
+                 if t["status"] == "complete" and (t.get("drops") or {}).get(pid) == r), None)
+    now = next((lg.team[m["roster_id"]] for m in lg.matchups[lg.weeks[-1]] if pid in (m.get("players") or [])), None)
+    if left:
+        how = f"traded to {lg.team[left['adds'][pid]]}" if left["type"] == "trade" and pid in (left.get("adds") or {}) else "dropped"
+        wk = min(left["leg"], lg.weeks[-1])
+        if now == lg.team[r]:
+            tail = "; picked back up later (those points count as a pickup)"
+        elif now:
+            tail = f"; now on {now}" if how == "dropped" else ""
+        else:
+            tail = "; now a free agent"
+        return f"{name}: {how} in week {wk} without starting{f' ({bench:.1f} pts on the bench)' if bench else ''}{tail}"
+    return f"{name}: on the roster but never started ({bench:.1f} pts on the bench)"
 
 
 def trades(lg):
