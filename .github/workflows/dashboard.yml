@@ -29,7 +29,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install Anthropic SDK (for the written columns)
+        run: pip install anthropic
       - name: Build site
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}  # optional: without it the built-in writer does the trash talk
         run: python -m dashboard.build "$LEAGUE_ID" --out _site
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

@@ -46,3 +46,9 @@ python3 -m dashboard.build <league_id> --out _site --no-winprob   # quick build 
 ```
 
 `.github/workflows/dashboard.yml` rebuilds and publishes it to GitHub Pages every Tuesday and Thursday, on pushes that change the dashboard code, and on demand from the Actions tab ("Run workflow"). Change `LEAGUE_ID` in that file to point it at a different league.
+
+### Written columns
+
+The "week in review" and next-week "trash talk" sections are written from a fact sheet of each week's stats
+(`dashboard/commentary.py`). If the repository has an `ANTHROPIC_API_KEY` Actions secret, Claude writes them;
+otherwise a built-in writer fills in from canned lines.
