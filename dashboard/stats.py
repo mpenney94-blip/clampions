@@ -208,6 +208,58 @@ def waiver_wars(lg):
     return out, dict(per_team)
 
 
+def carry(lg):
+    """Where each team's starting-lineup points came from, by position and by player."""
+    out = []
+    for r, name in lg.team.items():
+        by_pos, by_player = collections.Counter(), collections.Counter()
+        for w in lg.weeks:
+            m = next(m for m in lg.matchups[w] if m["roster_id"] == r)
+            for pid, v in zip(m["starters"], m["starters_points"]):
+                if pid != "0":
+                    by_pos[lg.pos_of(pid) or "?"] += v
+                    by_player[pid] += v
+        total = sum(by_pos.values()) or 1
+        top = by_player.most_common(1)[0] if by_player else (None, 0)
+        out.append({"team": name, "total": total, "by_pos": dict(by_pos),
+                    "top": {"player": lg.name_of(top[0]) if top[0] else "", "pts": top[1], "share": top[1] / total}})
+    return sorted(out, key=lambda x: -x["top"]["share"])
+
+
+def starts(lg, min_starts=4):
+    """Every player started at least min_starts times: average and spread of his started scores."""
+    seen = collections.defaultdict(list)  # pid -> [(team, pts)]
+    for w in lg.weeks:
+        for m in lg.matchups[w]:
+            for pid, v in zip(m["starters"], m["starters_points"]):
+                if pid != "0":
+                    seen[pid].append((lg.team[m["roster_id"]], v))
+    out = []
+    for pid, xs in seen.items():
+        if len(xs) < min_starts:
+            continue
+        vals = [v for _, v in xs]
+        team = collections.Counter(t for t, _ in xs).most_common(1)[0][0]
+        out.append({"player": lg.name_of(pid), "pos": lg.pos_of(pid), "team": team, "starts": len(vals),
+                    "avg": st.mean(vals), "sd": st.pstdev(vals), "low": min(vals), "high": max(vals)})
+    return out
+
+
+def team_grid(lg, r):
+    """Every player on roster r by week: (points, started?) for weeks he was on the roster and played."""
+    rows = collections.defaultdict(dict)
+    for w in lg.weeks:
+        m = next(m for m in lg.matchups[w] if m["roster_id"] == r)
+        pp = m.get("players_points") or {}
+        for pid in m.get("players") or []:
+            if w in lg.pts.get(pid, {}) or pid in m["starters"]:
+                rows[pid][w] = (pp.get(pid, 0.0), pid in m["starters"])
+    out = [{"player": lg.name_of(pid), "pos": lg.pos_of(pid), "weeks": wk,
+            "started": sum(v for v, s in wk.values() if s), "benched": sum(v for v, s in wk.values() if not s)}
+           for pid, wk in rows.items() if any(s for _, s in wk.values()) or sum(v for v, _ in wk.values()) >= 5]
+    return sorted(out, key=lambda x: (-x["started"], -x["benched"]))
+
+
 def trades(lg):
     out = []
     for t in sorted((t for t in lg.transactions if t["type"] == "trade" and t["status"] == "complete"), key=lambda t: t["status_updated"]):

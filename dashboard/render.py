@@ -12,9 +12,11 @@ CSS = """
 :root{--bg:#f6f7f9;--surface:#fff;--ink:#12151a;--ink2:#4b525c;--ink3:#7a828d;--rule:#e2e5ea;--grid:#eceef2;
 --a:#2a78d6;--a-fill:rgba(42,120,214,.14);--b:#eb6834;--b-fill:rgba(235,104,52,.14);--good:#1a7f3c;--bad:#c2410c;--mark:#b4bcc7;
 --r0:#f3f6fa;--r1:#dbe8f8;--r2:#b7d3f6;--r3:#86b6ef;--r4:#5598e7;--r5:#2a78d6;--r6:#1c5cab;--r7:#104281;
+--c1:#2a78d6;--c2:#eb6834;--c3:#1baf7a;--c4:#eda100;--c5:#e87ba4;--c6:#008300;
 --display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;--body:"Source Sans 3",system-ui,-apple-system,"Segoe UI",sans-serif}
 @media (prefers-color-scheme:dark){:root{--bg:#111317;--surface:#1a1d22;--ink:#eef0f3;--ink2:#b9bfc8;--ink3:#8a919b;--rule:#2c3038;--grid:#252930;
 --a:#3987e5;--a-fill:rgba(57,135,229,.2);--b:#d95926;--b-fill:rgba(217,89,38,.2);--good:#3fb26a;--bad:#ef7a4a;--mark:#5b636e;
+--c1:#3987e5;--c2:#d95926;--c3:#199e70;--c4:#c98500;--c5:#d55181;--c6:#008300;
 --r0:#1f242c;--r1:#1b3150;--r2:#184f95;--r3:#1c5cab;--r4:#256abf;--r5:#3987e5;--r6:#6da7ec;--r7:#9ec5f4;color-scheme:dark}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.5}
@@ -75,6 +77,12 @@ svg .lead{stroke:var(--ink3);stroke-width:1}
 svg.hl-on .dot,svg.hl-on [class^="ring-"]{opacity:.15}
 svg.hl-on .dot.sel{opacity:1;fill:var(--a)!important;stroke-width:2}
 svg.hl-on [class^="ring-"].sel{opacity:1}
+.stack{display:flex;gap:2px;height:22px;border-radius:5px;overflow:hidden;min-width:220px}
+.stack span{display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700;min-width:0;overflow:hidden}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:0 0 10px;font-size:14px;color:var(--ink2)}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.grid-t td.w{text-align:center;min-width:44px;font-weight:700;border:2px solid var(--surface);padding:6px 4px}
+.grid-t td.bn{color:var(--ink3);font-weight:400;font-style:italic}
 footer{margin-top:56px;color:var(--ink3);font-size:14px;border-top:1px solid var(--rule);padding-top:16px}
 """
 
@@ -416,7 +424,68 @@ def highlight_box(svg, groups, summaries, what):
             f'<div class="scroll"><div style="min-width:680px">{svg}</div></div></div>')
 
 
+POS_ORDER = ["QB", "RB", "WR", "TE", "K", "DEF"]
+
+
+def carry_bars(rows):
+    legend = '<div class="legend">' + "".join(f'<span><i style="background:var(--c{i})"></i>{p}</span>' for i, p in enumerate(POS_ORDER, 1)) + '</div>'
+    trs = []
+    for r in rows:
+        segs = []
+        for i, p in enumerate(POS_ORDER, 1):
+            v = r["by_pos"].get(p, 0)
+            share = v / r["total"]
+            if share <= 0:
+                continue
+            txt = f"{share:.0%}" if share >= .09 else ""
+            segs.append(f'<span style="flex:{share:.4f};background:var(--c{i})" title="{p}: {v:.1f} pts ({share:.0%})">{txt}</span>')
+        t = r["top"]
+        trs.append(f'<tr><td class="team">{esc(r["team"])}</td><td style="width:50%"><div class="stack">{"".join(segs)}</div></td>'
+                   f'<td>{esc(t["player"])} <b>{t["share"]:.0%}</b> <span class="muted">{t["pts"]:.0f} pts</span></td></tr>')
+    return (f'<div class="panel scroll">{legend}<table><thead><tr><th>Team</th><th>Share of starting-lineup points, by position</th>'
+            f'<th>Top player’s share</th></tr></thead><tbody>{"".join(trs)}</tbody></table></div>'
+            '<p class="note">Only points scored by players in the starting lineup count. Flex points go to the player’s own position. '
+            'Teams are sorted by how much of their scoring came from a single player.</p>')
+
+
+def team_grids(lg_name, grids, weeks):
+    """grids: {team: rows from stats.team_grid}. One table per team behind a team picker."""
+    teams = sorted(grids, key=str.lower)
+    opts = "".join(f'<option value="{i}">{esc(t)}</option>' for i, t in enumerate(teams))
+    panels = []
+    for i, t in enumerate(teams):
+        head = "".join(f'<th class="n">Wk {w}</th>' for w in weeks)
+        body = []
+        for r in grids[t]:
+            cells = []
+            for w in weeks:
+                if w not in r["weeks"]:
+                    cells.append('<td class="w"></td>')
+                    continue
+                v, started = r["weeks"][w]
+                if started:
+                    step = max(1, min(7, int(v // 5) + 1)) if v > 0 else 0
+                    fg = "#fff" if step >= 5 else "var(--ink)"
+                    cells.append(f'<td class="w" style="background:var(--r{step});color:{fg}" title="Week {w}: {v:.2f}">{v:.1f}</td>')
+                else:
+                    cells.append(f'<td class="w bn" title="Week {w}: {v:.2f} on the bench">{v:.1f}</td>')
+            body.append(f'<tr><td><b>{esc(r["player"])}</b> <span class="muted">{r["pos"] or ""}</span></td>{"".join(cells)}'
+                        f'<td class="n team">{r["started"]:.1f}</td><td class="n muted">{r["benched"]:.1f}</td></tr>')
+        panels.append(f'<div data-panel="{i}"{"" if i == 0 else " hidden"}><table class="grid-t"><thead><tr><th>Player</th>{head}'
+                      f'<th class="n">Started</th><th class="n">Bench</th></tr></thead><tbody>{"".join(body)}</tbody></table></div>')
+    return (f'<div class="panel switch"><div class="hl-bar"><label for="grid-pick">Team</label><select id="grid-pick">{opts}</select></div>'
+            f'<div class="scroll">{"".join(panels)}</div></div>'
+            '<p class="note">Colored cells are starting-lineup scores (darker = more points, in 5-point steps). Gray italic numbers are points '
+            'scored on the bench. Blank cells are weeks the player wasn’t on the roster or didn’t play.</p>')
+
+
 HIGHLIGHT_JS = """<script>
+document.querySelectorAll('.switch').forEach(function (box) {
+  var sel = box.querySelector('select');
+  function apply() { box.querySelectorAll('[data-panel]').forEach(function (p) { p.hidden = p.getAttribute('data-panel') !== sel.value; }); }
+  sel.addEventListener('change', apply);
+  apply();
+});
 document.querySelectorAll('.hl').forEach(function (box) {
   var sel = box.querySelector('select'), svg = box.querySelector('svg'), sum = box.querySelector('.hl-sum');
   function apply() {
