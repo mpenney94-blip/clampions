@@ -83,6 +83,16 @@ svg.hl-on [class^="ring-"].sel{opacity:1}
 .legend i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:6px;vertical-align:-1px}
 .grid-t td.w{text-align:center;min-width:44px;font-weight:700;border:2px solid var(--surface);padding:6px 4px}
 .grid-t td.bn{color:var(--ink3);font-weight:400;font-style:italic}
+.tipwrap{position:relative;padding:8px 0;cursor:help;outline:none}
+.tipwrap:hover .track>span,.tipwrap:focus .track>span{background:var(--a)}
+.tip{display:none;position:absolute;left:0;top:100%;z-index:5;background:var(--surface);border:1px solid var(--rule);border-radius:8px;
+ box-shadow:0 6px 24px rgba(0,0,0,.18);padding:10px 12px;width:max-content;max-width:min(560px,86vw);font-size:13px;white-space:normal}
+.tip td{padding:4px 6px;border-bottom:1px solid var(--grid)}
+.tip td:first-child,.tip td:nth-child(2){white-space:nowrap}
+.tipwrap:hover .tip,.tipwrap:focus .tip{display:block}
+.tippanel{overflow:visible}
+@media (max-width:640px){.tippanel{overflow-x:auto}
+ .tip{position:fixed;left:12px;right:12px;bottom:max(12px,env(safe-area-inset-bottom));top:auto;width:auto;max-width:none;max-height:60vh;overflow:auto}}
 footer{margin-top:56px;color:var(--ink3);font-size:14px;border-top:1px solid var(--rule);padding-top:16px}
 """
 
@@ -219,9 +229,15 @@ def waiver_wars(claims, per_team, teams):
             trs.append(f'<tr><td class="team">{esc(t)}</td><td class="barcell"><div class="track"></div></td><td class="n muted">0</td><td class="n muted">0.0</td><td class="muted">Never outbid</td></tr>')
             continue
         b = v["best"]
-        trs.append(f'<tr><td class="team">{esc(t)}</td><td class="barcell"><div class="track"><span style="width:{100 * v["missed"] / mx:.1f}%"></span></div></td>'
+        tip = "".join(f'<tr><td class="muted">Wk {x["claim"]["week"]}</td><td><b>{esc(x["claim"]["player"])}</b></td>'
+                      f'<td>bid ${x["bid"]} vs {esc(x["claim"]["winner"])} ${x["claim"]["win_bid"]}</td>'
+                      f'<td class="n team">{x["claim"]["since"]:.1f}</td></tr>'
+                      for x in sorted(v["claims"], key=lambda x: -x["claim"]["since"]))
+        trs.append(f'<tr><td class="team">{esc(t)}</td><td class="barcell"><div class="tipwrap" tabindex="0" aria-label="{esc(t)}’s lost claims">'
+                   f'<div class="track"><span style="width:{100 * v["missed"] / mx:.1f}%"></span></div>'
+                   f'<div class="tip" role="tooltip"><div class="eyebrow">{esc(t)} lost out on</div><table>{tip}</table></div></div></td>'
                    f'<td class="n">{v["lost"]}</td><td class="n team">{v["missed"]:.1f}</td><td>{esc(b["player"])} <span class="muted">{b["since"]:.1f} pts</span></td></tr>')
-    team_tbl = ('<h3 style="margin-top:18px">Points that got away, by team</h3><div class="panel scroll"><table><thead><tr><th>Team</th>'
+    team_tbl = ('<h3 style="margin-top:18px">Points that got away, by team</h3><p class="lede" style="margin:0 0 8px">Hover or tap a bar to see who they lost out on.</p><div class="panel tippanel"><table><thead><tr><th>Team</th>'
                 '<th class="barcell">Points missed</th><th class="n">Lost claims</th><th class="n">Pts</th><th>Biggest miss</th></tr></thead>'
                 f'<tbody>{"".join(trs)}</tbody></table></div>')
     return (tiles + team_tbl + claims_tbl +
