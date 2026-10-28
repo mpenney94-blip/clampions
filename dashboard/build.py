@@ -5,6 +5,7 @@ Usage: python3 -m dashboard.build <league_id> [--out _site] [--no-winprob]
 
 import argparse
 import datetime as dt
+import math
 import os
 import random
 
@@ -44,15 +45,17 @@ def pickups_chart(lg):
     for a in adds:
         lab = a in top or a in pricey
         g = a["games"]
-        pts.append({"x": a["bid"], "y": a["ppg"], "r": 3 + 1.3 * min(g, 8), "jitter": random.uniform(-4, 4) if a["bid"] <= 1 else 0,
+        pts.append({"x": a["bid"], "y": a["ppg"], "r": 3 + 1.3 * min(g, 8), "jitter": random.uniform(-16, 3) if a["bid"] == 0 else 0,
                     "z": -g, "label": a["player"] if lab else None,
                     "sub": f'{a["team"]} · ${a["bid"]} · {a["ppg"]:.1f}/gm · {g} {"game" if g == 1 else "games"}',
                     "priority": (2 if a in top else 1) * a["ppg"], "group": gi[a["team"]], "glabel": a["player"],
                     "gsub": f'${a["bid"]} · {a["ppg"]:.1f}/gm · {g} {"game" if g == 1 else "games"}',
                     "title": f'{a["player"]} ({a["team"]}): ${a["bid"]}, {a["ppg"]:.1f} pts/game over {g} games, {a["total"]:.1f} total'})
-    svg = render.scatter(pts, xmax=xmax, ymax=ymax, ystep=5, xreverse=True, xticks=range(0, xmax + 1, 10), xfmt=lambda v: f"${v}",
-                         xlabel="Waiver bid  ·  cheaper →", ylabel="Points per game on that roster",
-                         quadrants=[(xmax * .3, ymax * .92, "STEALS", "good"), (xmax * .82, ymax * .5, "PRICEY", "bad")], groups=groups)
+    ticks = [v for v in (0, 1, 2, 5, 10, 20, 30, 50, 75, 100, 150, 200, 300, 500, 1000) if v <= xmax * .9] + [xmax]
+    # square-root axis: spreads out the crowd of $0-$10 bids without squashing the big ones
+    svg = render.scatter(pts, xmax=xmax, ymax=ymax, ystep=5, xreverse=True, xticks=ticks, xfmt=lambda v: f"${v}", xscale=math.sqrt,
+                         xlabel="Waiver bid  ·  cheaper →  (square-root scale)", ylabel="Points per game on that roster",
+                         quadrants=[(xmax * .3 ** 2, ymax * .92, "STEALS", "good"), (xmax * .82 ** 2, ymax * .5, "PRICEY", "bad")], groups=groups)
     sums = {}
     for t in groups:
         mine = [a for a in adds if a["team"] == t]
