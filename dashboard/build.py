@@ -116,6 +116,40 @@ def draft_chart(lg):
             'The dashed line is the typical score for that draft slot (median of picks within 15 spots); steals and busts are measured against it.</p>')
 
 
+def boom_bust_chart(lg):
+    rows = stats.starts(lg)
+    if not rows:
+        return '<div class="panel muted">Not enough starts yet.</div>'
+    groups = sorted(lg.team.values(), key=str.lower)
+    gi = {t: i for i, t in enumerate(groups)}
+    xmax = max(10, (int(max(r["avg"] for r in rows)) // 5 + 1) * 5)
+    ymax = max(10, (int(max(r["sd"] for r in rows)) // 2 + 1) * 2)
+    studs = sorted(rows, key=lambda r: -r["avg"])[:5]
+    wild = sorted(rows, key=lambda r: -r["sd"])[:4]
+    steady = sorted([r for r in rows if r["avg"] >= 12], key=lambda r: r["sd"] / r["avg"])[:3]
+    duds = sorted([r for r in rows if r["starts"] >= 5], key=lambda r: r["avg"])[:3]
+    pts = []
+    for r in rows:
+        lab = r in studs or r in wild or r in steady or r in duds
+        pts.append({"x": r["avg"], "y": r["sd"], "r": 2 + 1.1 * r["starts"], "label": r["player"] if lab else None,
+                    "sub": f'{r["team"]} · {r["avg"]:.1f} avg · {r["low"]:.1f}–{r["high"]:.1f}', "priority": r["avg"] + r["sd"],
+                    "group": gi[r["team"]], "glabel": r["player"], "gsub": f'{r["avg"]:.1f} avg · {r["low"]:.1f}–{r["high"]:.1f}',
+                    "title": f'{r["player"]} ({r["pos"]}, {r["team"]}): {r["avg"]:.1f} avg over {r["starts"]} starts, range {r["low"]:.1f}–{r["high"]:.1f}'})
+    svg = render.scatter(pts, xmax=xmax, ymax=ymax, ystep=2, xticks=range(0, xmax + 1, 5),
+                         xlabel="Average points when started", ylabel="Week-to-week swing (std. dev.)", groups=groups,
+                         quadrants=[(xmax * .82, ymax * .08, "STEADY STUDS", "good"), (xmax * .5, ymax * .93, "BOOM OR BUST", "bad"),
+                                    (xmax * .1, ymax * .08, "DUDS", "muted")])
+    sums = {}
+    for t in groups:
+        mine = [r for r in rows if r["team"] == t]
+        if mine:
+            a, b = max(mine, key=lambda r: r["avg"]), max(mine, key=lambda r: r["sd"])
+            sums[t] = f'{len(mine)} regular starters · best: {a["player"]} {a["avg"]:.1f} avg · wildest: {b["player"]} ({b["low"]:.1f} to {b["high"]:.1f})'
+    return (render.highlight_box(svg, groups, sums, "starters") +
+            '<p class="note">Every player started at least 4 times, by his average when started and how much that score swings week to week. '
+            'Right = scores more; higher = less predictable. Bigger dots = more starts.</p>')
+
+
 def build(league_id, out, with_winprob=True):
     lg = stats.League(league_id)
     now = dt.datetime.now(dt.timezone.utc)
@@ -144,6 +178,10 @@ def build(league_id, out, with_winprob=True):
         ("waiver-wars", "Waiver wars", '<p class="lede">Players more than one team put in a claim for, who won them, and what the losing bidders missed out on.</p>'
          + render.waiver_wars(*stats.waiver_wars(lg), sorted(lg.team.values(), key=str.lower))),
         ("trades", "Trade scorecard", render.trade_cards(stats.trades(lg))),
+        ("carry", "Who carried each team", render.carry_bars(stats.carry(lg))),
+        ("boom-bust", "Boom or bust", boom_bust_chart(lg)),
+        ("team-grid", "Team by week", '<p class="lede">Every player on a team’s roster, week by week: what he scored and whether he was in the lineup.</p>'
+         + render.team_grids(lg.name, {n: stats.team_grid(lg, r) for r, n in lg.team.items()}, lg.weeks)),
         ("draft", "Draft report card", draft_chart(lg)),
     ]
     toc = '<nav class="toc">' + "".join(f'<a href="#{k}">{esc(t)}</a>' for k, t, _ in sections) + '<a href="#history">Past weeks</a></nav>'
