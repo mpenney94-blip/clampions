@@ -86,7 +86,8 @@ svg.hl-on [class^="ring-"].sel{opacity:1}
 .grid-t tr.tot td{font-weight:700;border-top:2px solid var(--rule);border-bottom:0;white-space:nowrap}
 .grid-t td.kept{outline:2.5px solid var(--ink);outline-offset:-3px}
 .star{color:var(--c4);margin-left:3px;font-size:.9em}
-svg text.star{fill:var(--c4);font-size:12px;paint-order:stroke;stroke:var(--surface);stroke-width:3px}
+svg text.star{fill:var(--c4);font-size:17px;paint-order:stroke;stroke:var(--surface);stroke-width:3px;cursor:default}
+svg .lay,svg .lab,svg .sub,svg .lead,svg [class^="ring-"]{pointer-events:none}
 svg.hl-on text.star{opacity:.15}svg.hl-on text.star.sel{opacity:1}
 .grid-t td.bn{color:var(--ink3);font-weight:400;font-style:italic}
 .tipwrap{position:relative;padding:8px 0;cursor:help;outline:none}
@@ -313,7 +314,7 @@ def scatter(points, *, xmax, ymax, ystep, xlabel, ylabel, xfmt=str, xreverse=Fal
         if p.get("ring"):
             s.append(f'<circle class="ring-{p["ring"]}" cx="{cx:.1f}" cy="{cy:.1f}" r="{p["r"] + 3:.1f}"{g}/>')
         if p.get("star"):
-            s.append(f'<text class="star" x="{cx + p["r"] + 1:.1f}" y="{cy - p["r"] + 1:.1f}"{g}>★</text>')
+            s.append(f'<text class="star" x="{cx + p["r"] - 1:.1f}" y="{cy - p["r"] + 3:.1f}"{g}>★<title>{esc(p.get("title", ""))}</title></text>')
 
     def hits(box, pts):
         x0, y0, x1, y1 = box
@@ -367,12 +368,13 @@ def scatter(points, *, xmax, ymax, ystep, xlabel, ylabel, xfmt=str, xreverse=Fal
             out.append(f'<text class="sub" x="{lx:.1f}" y="{ly + 15:.1f}" text-anchor="{an}">{esc(sub)}</text>')
         return out
 
-    marked = [p["_c"] + (p["r"] + 4,) for p in points if p.get("label") or p.get("ring") or p.get("cls", "dot") != "dot"]
+    marked = [p["_c"] + (p["r"] + (12 if p.get("star") else 4),) for p in points
+              if p.get("label") or p.get("ring") or p.get("star") or p.get("cls", "dot") != "dot"]
     s.append('<g class="lay" data-lay="all">' + "".join(layer([p for p in points if p.get("label")], marked)) + '</g>')
     for gi, _ in enumerate(groups or []):
         mine = [p for p in points if gi in p["_groups"]]
         s.append(f'<g class="lay" data-lay="{gi}" style="display:none">'
-                 + "".join(layer(mine, [p["_c"] + (p["r"] + 4,) for p in mine], gi)) + '</g>')
+                 + "".join(layer(mine, [p["_c"] + (p["r"] + (12 if p.get("star") else 4),) for p in mine], gi)) + '</g>')
     s.append('</svg>')
     return "".join(s)
 
@@ -555,7 +557,8 @@ def team_grids(lg_name, grids, weeks, totals):
                     cells.append(f'<td class="w" style="background:var(--r{step});color:{fg}" title="Week {w}: {v:.2f}">{v:.1f}</td>')
                 else:
                     cells.append(f'<td class="w bn" title="Week {w}: {v:.2f} on the bench">{v:.1f}</td>')
-            body.append(f'<tr><td><b>{esc(r["player"])}</b> <span class="muted">{r["pos"] or ""}</span></td>{"".join(cells)}'
+            star = '<span class="star" title="Keeper">★</span>' if r.get("keeper") else ""
+            body.append(f'<tr><td><b>{esc(r["player"])}</b>{star} <span class="muted">{r["pos"] or ""}</span></td>{"".join(cells)}'
                         f'<td class="n team">{r["started"]:.1f}</td><td class="n muted">{r["benched"]:.1f}</td></tr>')
         tot = totals[t]
         act, best = sum(a for a, _ in tot.values()), sum(b for _, b in tot.values())
@@ -571,7 +574,7 @@ def team_grids(lg_name, grids, weeks, totals):
     return (f'<div class="panel switch"><div class="hl-bar"><label for="grid-pick">Team</label><select id="grid-pick">{opts}</select></div>'
             f'<div class="scroll">{"".join(panels)}</div></div>'
             '<p class="note">Colored cells are starting-lineup scores (darker = more points, in 5-point steps). Gray italic numbers are points '
-            'scored on the bench. Blank cells are weeks the player wasn’t on the roster or didn’t play. Best possible = the highest-scoring '
+            'scored on the bench. Blank cells are weeks the player wasn’t on the roster or didn’t play. ★ = the team’s keeper. Best possible = the highest-scoring '
             'legal lineup from that week’s roster, picked after the games; the red number is how much more it would have scored.</p>')
 
 
