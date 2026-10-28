@@ -210,53 +210,58 @@ def build(league_id, out, with_winprob=True):
     pw_prev = {x["team"]: x["rank"] for x in weekly.power(lg, last - 1)} if len(lg.weeks) > 1 else {}
     proj_rows, proj_over, proj_under = weekly.vs_projection(lg)
     tr_rows, tr_league = weekly.trends(lg)
-    week_sections = [
-        ("recap", f"Week {last} recap", render.recap_tiles(stats.recap(lg, last))),
-        ("awards", f"Week {last} awards", render.awards_tiles(weekly.awards(lg, last, wp_last), last)),
-        ("power", "Power rankings", render.power_table(weekly.power(lg), pw_prev)),
-    ]
     more_games = lg.reg_weeks and last < lg.reg_weeks[-1]
-    if more_games:
-        week_sections.append(("playoffs", "Playoff odds", render.playoff_table(po_now, po_prev, lg.playoff_teams, div_names)))
-    if with_winprob:
-        week_sections.append(("winprob", f"Week {last} win probability", winprob_html))
-    if more_games:
-        week_sections.append(("preview", f"Week {lg.next_week} preview", render.preview_cards(weekly.preview(lg, lg.next_week), lg.next_week)))
-    season_sections = [
-        ("standings", "All-play standings", '<p class="lede">How each team would stand if everyone played everyone every week, next to their real record.</p>' + render.allplay_table(ap, lg.weeks)),
-        ("schedule", "Schedule swap", '<p class="lede">Every team’s record if it had played each other team’s schedule.</p>' + render.swap_table(order, grid)),
-        ("projections", "Beating the projections", render.projection_table(proj_rows, proj_over, proj_under, last)),
-        ("close", "Close games", render.close_table(*weekly.close_games(lg))),
-        ("trends", "Scoring trends", render.trend_cards(tr_rows, tr_league, lg.weeks)),
-        ("position", "Position strength", render.position_table(*weekly.position_strength(lg))),
-        ("byes", "Bye week damage", render.bye_table(weekly.byes(lg))),
-        ("injuries", "Injury damage", render.injury_table(weekly.injuries(lg))),
-        ("bench", "Points left on the bench", render.bench_table(stats.bench(lg))),
-        ("waivers", "Waiver wire", pickups_chart(lg)),
-        ("waiver-wars", "Waiver wars", '<p class="lede">Players more than one team put in a claim for, who won them, and what the losing bidders missed out on.</p>'
-         + render.waiver_wars(*stats.waiver_wars(lg), sorted(lg.team.values(), key=str.lower))),
-        ("overbids", "Waiver overbids", '<p class="lede">How much FAAB each team spent beyond what it took to win, and how often its claims came through.</p>'
-         + render.overbid_table(stats.waiver_bids(lg), lg.info["settings"].get("waiver_budget", 100))),
-        ("trades", "Trade scorecard", render.trade_cards(stats.trades(lg))),
-        ("carry", "Who carried each team", render.carry_bars(stats.carry(lg))),
-        ("sources", "Drafted vs. picked up", render.source_bars(src)),
-        ("rounds", "Points by draft round", render.round_table(src, max((p["round"] for p in lg.picks), default=0))),
-        ("boom-bust", "Boom or bust", boom_bust_chart(lg)),
-        ("team-grid", "Team by week", '<p class="lede">Every player on a team’s roster, week by week: what he scored and whether he was in the lineup.</p>'
-         + render.team_grids(lg.name, {n: stats.team_grid(lg, r) for r, n in lg.team.items()}, lg.weeks,
-                             {n: stats.week_totals(lg, r) for r, n in lg.team.items()})),
-        ("draft", "Draft report card", draft_chart(lg)),
+    S = {
+        "recap": (f"Week {last} recap", render.recap_tiles(stats.recap(lg, last))),
+        "awards": (f"Week {last} awards", render.awards_tiles(weekly.awards(lg, last, wp_last), last)),
+        "winprob": (f"Week {last} win probability", winprob_html) if with_winprob else None,
+        "power": ("Power rankings", render.power_table(weekly.power(lg), pw_prev)),
+        "playoffs": ("Playoff odds", render.playoff_table(po_now, po_prev, lg.playoff_teams, div_names)) if more_games else None,
+        "preview": (f"Week {lg.next_week} preview", render.preview_cards(weekly.preview(lg, lg.next_week), lg.next_week)) if more_games else None,
+        "history": ("Past weeks", f'<div class="panel">{week_links}</div>'),
+        "standings": ("All-play standings", '<p class="lede">How each team would stand if everyone played everyone every week, next to their real record.</p>' + render.allplay_table(ap, lg.weeks)),
+        "trends": ("Scoring trends", render.trend_cards(tr_rows, tr_league, lg.weeks)),
+        "projections": ("Beating the projections", render.projection_table(proj_rows, proj_over, proj_under, last)),
+        "close": ("Close games", render.close_table(*weekly.close_games(lg))),
+        "schedule": ("Schedule swap", '<p class="lede">Every team’s record if it had played each other team’s schedule.</p>' + render.swap_table(order, grid)),
+        "carry": ("Who carried each team", render.carry_bars(stats.carry(lg))),
+        "boom-bust": ("Boom or bust", boom_bust_chart(lg)),
+        "team-grid": ("Team by week", '<p class="lede">Every player on a team’s roster, week by week: what he scored and whether he was in the lineup.</p>'
+                      + render.team_grids(lg.name, {n: stats.team_grid(lg, r) for r, n in lg.team.items()}, lg.weeks,
+                                          {n: stats.week_totals(lg, r) for r, n in lg.team.items()})),
+        "trades": ("Trade scorecard", render.trade_cards(stats.trades(lg))),
+        "byes": ("Bye week damage", render.bye_table(weekly.byes(lg))),
+        "injuries": ("Injury damage", render.injury_table(weekly.injuries(lg))),
+        "bench": ("Points left on the bench", render.bench_table(stats.bench(lg))),
+        "waivers": ("Waiver wire", pickups_chart(lg)),
+        "waiver-wars": ("Waiver wars", '<p class="lede">Players more than one team put in a claim for, who won them, and what the losing bidders missed out on.</p>'
+                        + render.waiver_wars(*stats.waiver_wars(lg), sorted(lg.team.values(), key=str.lower))),
+        "overbids": ("Waiver overbids", '<p class="lede">How much FAAB each team spent beyond what it took to win, and how often its claims came through.</p>'
+                     + render.overbid_table(stats.waiver_bids(lg), lg.info["settings"].get("waiver_budget", 100))),
+        "position": ("Position strength", render.position_table(*weekly.position_strength(lg))),
+        "sources": ("Drafted vs. picked up", render.source_bars(src)),
+        "draft": ("Draft report card", draft_chart(lg)),
+        "rounds": ("Points by draft round", render.round_table(src, max((p["round"] for p in lg.picks), default=0))),
+    }
+    groups = [
+        ("this-week", "This week", f"What happened in week {last} and what’s coming next. These change every week.",
+         ["recap", "awards", "winprob", "power", "playoffs", "preview", "history"]),
+        ("scoring", "Scoring", f"Weeks 1–{last}: how many points every team put up, how lucky it was, and where the points came from.",
+         ["standings", "trends", "projections", "close", "schedule", "carry", "boom-bust", "team-grid"]),
+        ("roster", "Roster", "Trades, byes, injuries, lineup calls and the waiver wire.",
+         ["trades", "byes", "injuries", "bench", "waivers", "waiver-wars", "overbids", "position"]),
+        ("draft-group", "Draft", "How the draft played out, and how much each team still leans on it.",
+         ["sources", "draft", "rounds"]),
     ]
-    links = lambda secs: "".join(f'<a href="#{k}">{esc(t)}</a>' for k, t, _ in secs)
-    toc = (f'<nav class="toc" aria-label="Sections"><div class="grp"><span><a href="#this-week" style="all:unset;cursor:pointer">This week</a></span>{links(week_sections)}</div>'
-           f'<div class="grp"><span><a href="#season" style="all:unset;cursor:pointer">Season</a></span>{links(season_sections)}<a href="#history">Past weeks</a></div></nav>')
-    sec = lambda secs: "".join(f'<section id="{k}"><h2>{esc(t)}</h2>{h}</section>' for k, t, h in secs)
+    groups = [(gid, name, blurb, [k for k in keys if S[k]]) for gid, name, blurb, keys in groups]
+    toc = ('<nav class="toc" aria-label="Sections">'
+           + "".join(f'<div class="grp"><span><a href="#{gid}" style="all:unset;cursor:pointer">{name}</a></span>'
+                     + "".join(f'<a href="#{k}">{esc(S[k][0])}</a>' for k in keys) + '</div>' for gid, name, _, keys in groups)
+           + '</nav>')
     body = (f'<header class="site"><div><div class="eyebrow">{lg.season} season · through week {last}</div><h1>{esc(lg.name)}</h1></div></header>{toc}'
-            f'<div class="group-head" id="this-week"><h2>This week</h2><p>What happened in week {last} and what’s coming next. These change every week.</p></div>'
-            + sec(week_sections)
-            + f'<div class="group-head" id="season"><h2>Season so far</h2><p>Weeks 1–{last}: standings, roster building and how every team got its points.</p></div>'
-            + sec(season_sections)
-            + f'<section id="history"><h2>Past weeks</h2><div class="panel">{week_links}</div></section>' + render.footer(now) + render.HIGHLIGHT_JS)
+            + "".join(f'<div class="group-head" id="{gid}"><h2>{name}</h2><p>{blurb}</p></div>'
+                      + "".join(f'<section id="{k}"><h2>{esc(S[k][0])}</h2>{S[k][1]}</section>' for k in keys) for gid, name, blurb, keys in groups)
+            + render.footer(now) + render.HIGHLIGHT_JS)
     os.makedirs(os.path.join(out, "weeks"), exist_ok=True)
     with open(os.path.join(out, "index.html"), "w") as f:
         f.write(render.page(f"{lg.name} dashboard", body, f"{lg.name} {lg.season}: all-play standings, win probability, schedule swap, bench, waivers, trades and draft."))
