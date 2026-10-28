@@ -97,6 +97,17 @@ svg .lay,svg .lab,svg .sub,svg .lead,svg [class^="ring-"]{pointer-events:none}
 svg.hl-on text.star{opacity:.2}svg.hl-on text.star.sel{opacity:1}
 .grid-t .star{font-size:1.25em;vertical-align:-1px}
 .grid-t td.bn{color:var(--ink3);font-weight:400;font-style:italic}
+table.expand tr.xrow{cursor:pointer}
+table.expand tr.xrow:hover td{background:var(--grid)}
+table.expand tr.xrow:focus-visible{outline:2px solid var(--a);outline-offset:-2px}
+table.expand tr.xrow[aria-expanded="true"] .track>span{background:var(--a)}
+table.expand .chev{display:inline-block;color:var(--ink3);transition:transform .15s;width:12px}
+table.expand tr.xrow[aria-expanded="true"] .chev{transform:rotate(90deg)}
+table.expand tr.xdetail>td{background:var(--bg);padding:6px 10px 12px}
+table.picks td{padding:5px 8px;font-size:14px}
+table.picks b.gone{text-decoration:line-through;text-decoration-thickness:1.5px;color:var(--ink3)}
+.gone-note{color:var(--bad);font-size:12.5px}
+@media (prefers-reduced-motion:reduce){table.expand .chev{transition:none}}
 .tip b.gone{text-decoration:line-through;text-decoration-thickness:1.5px;color:var(--ink3)}
 .tip .gone-note{color:var(--bad);font-size:11.5px}
 .tipwrap{position:relative;padding:8px 0;cursor:help;outline:none}
@@ -616,6 +627,14 @@ def team_grids(lg_name, grids, weeks, totals):
 
 
 HIGHLIGHT_JS = """<script>
+document.querySelectorAll('table.expand tr.xrow').forEach(function (row) {
+  function toggle() {
+    var open = row.getAttribute('aria-expanded') !== 'true', d = document.getElementById(row.getAttribute('aria-controls'));
+    row.setAttribute('aria-expanded', open); d.hidden = !open;
+  }
+  row.addEventListener('click', toggle);
+  row.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+});
 document.querySelectorAll('.sortbars').forEach(function (box) {
   var sel = box.querySelector('select'), body = box.querySelector('tbody'), hint = box.querySelector('.sort-hint');
   var th = box.querySelector('th.sort-col');

@@ -96,19 +96,22 @@ def draft_chart(lg):
     for z in rows:
         tot[z["team"]] = tot.get(z["team"], 0) + z["pts"]
     mx = max(tot.values()) or 1
-    def picks_tip(t):
+    def picks_detail(t):
         mine = sorted((z for z in rows if z["team"] == t), key=lambda z: z["pick"])
         trs = "".join(f'<tr><td class="muted">R{z["round"]}</td><td class="muted">#{z["pick"]}</td>'
                       f'<td><b{" class=gone" if z["gone"] else ""}>{esc(z["player"])}</b>{"<span class=star>★</span>" if z["keeper"] else ""} '
-                      f'<span class="muted">{z["pos"] or ""}</span>'
-                      f'{"<div class=gone-note>" + esc(z["gone"]) + "</div>" if z["gone"] else ""}</td>'
+                      f'<span class="muted">{z["pos"] or ""}</span></td>'
+                      f'<td>{"<span class=gone-note>" + esc(z["gone"]) + "</span>" if z["gone"] else ""}</td>'
                       f'<td class="n team">{z["pts"]:.1f}</td></tr>' for z in mine)
         n_gone = sum(1 for z in mine if z["gone"])
-        foot = f'<div class="muted" style="margin-top:6px">{n_gone} of {len(mine)} no longer on the team (struck through)</div>' if n_gone else ""
-        return f'<div class="tip" role="tooltip"><div class="eyebrow">{esc(t)}’s draft</div><table>{trs}</table>{foot}</div>'
-    haul = "".join(f'<tr><td class="muted">{i}</td><td class="team">{esc(t)}</td><td class="barcell"><div class="tipwrap" tabindex="0" aria-label="{esc(t)}’s draft picks">'
-                   f'<div class="track"><span style="width:{100 * v / mx:.1f}%"></span></div>{picks_tip(t)}</div></td>'
-                   f'<td class="n team">{v:.0f}</td></tr>' for i, (t, v) in enumerate(sorted(tot.items(), key=lambda kv: -kv[1]), 1))
+        foot = f'<div class="muted" style="margin-top:6px;font-size:13px">{n_gone} of {len(mine)} no longer on the team (struck through)</div>' if n_gone else ""
+        return f'<table class="picks">{trs}</table>{foot}'
+    haul = "".join(f'<tr class="xrow" tabindex="0" role="button" aria-expanded="false" aria-controls="haul-{i}">'
+                   f'<td class="muted">{i}</td><td class="team"><span class="chev" aria-hidden="true">▸</span> {esc(t)}</td>'
+                   f'<td class="barcell"><div class="track"><span style="width:{100 * v / mx:.1f}%"></span></div></td>'
+                   f'<td class="n team">{v:.0f}</td></tr>'
+                   f'<tr class="xdetail" id="haul-{i}" hidden><td></td><td colspan="3">{picks_detail(t)}</td></tr>'
+                   for i, (t, v) in enumerate(sorted(tot.items(), key=lambda kv: -kv[1]), 1))
 
     def lst(title, items, cls):
         li = "".join(f'<tr><td><b>{esc(z["player"])}</b>{"<span class=star title=keeper>★</span>" if z["keeper"] else ""} '
@@ -130,8 +133,8 @@ def draft_chart(lg):
                             f'{kb["team"]}, round {kb["round"]} ({render.signed(kb["value"], 0)} vs typical)')
     return (render.highlight_box(svg, groups, sums, "draft picks", extra=1) +
             f'<div class="grid2" style="margin-top:14px">{lst("Biggest steals", best, "pos")}{lst("Biggest busts (rounds 1–4)", busts, "neg")}</div>'
-            f'<h3 style="margin-top:18px">Draft haul: total points from each team’s picks</h3><p class="lede" style="margin:0 0 8px">Hover or tap a bar to see that team’s picks.</p>'
-            f'<div class="panel tippanel"><table>{haul}</table></div>'
+            f'<h3 style="margin-top:18px">Draft haul: total points from each team’s picks</h3><p class="lede" style="margin:0 0 8px">Click a team to see its picks.</p>'
+            f'<div class="panel scroll"><table class="expand">{haul}</table></div>'
             '<p class="note">Points are each drafted player’s fantasy points in this league’s scoring this season, wherever they ended up. '
             'The dashed line is the typical score for that draft slot (median of picks within 15 spots); steals and busts are measured against it. '
             '★ = keeper: kept from last season using that round’s pick rather than chosen in this year’s draft.</p>')
