@@ -82,6 +82,8 @@ svg.hl-on [class^="ring-"].sel{opacity:1}
 .legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:0 0 10px;font-size:14px;color:var(--ink2)}
 .legend i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:6px;vertical-align:-1px}
 .grid-t td.w{text-align:center;min-width:44px;font-weight:700;border:2px solid var(--surface);padding:6px 4px}
+.grid-t tr.tot td.n{text-align:center}
+.grid-t tr.tot td{font-weight:700;border-top:2px solid var(--rule);border-bottom:0;white-space:nowrap}
 .grid-t td.bn{color:var(--ink3);font-weight:400;font-style:italic}
 .tipwrap{position:relative;padding:8px 0;cursor:help;outline:none}
 .tipwrap:hover .track>span,.tipwrap:focus .track>span{background:var(--a)}
@@ -464,8 +466,8 @@ def carry_bars(rows):
             'Teams are sorted by how much of their scoring came from a single player.</p>')
 
 
-def team_grids(lg_name, grids, weeks):
-    """grids: {team: rows from stats.team_grid}. One table per team behind a team picker."""
+def team_grids(lg_name, grids, weeks, totals):
+    """grids: {team: rows from stats.team_grid}; totals: {team: stats.week_totals}. One table per team behind a team picker."""
     teams = sorted(grids, key=str.lower)
     opts = "".join(f'<option value="{i}">{esc(t)}</option>' for i, t in enumerate(teams))
     panels = []
@@ -487,12 +489,22 @@ def team_grids(lg_name, grids, weeks):
                     cells.append(f'<td class="w bn" title="Week {w}: {v:.2f} on the bench">{v:.1f}</td>')
             body.append(f'<tr><td><b>{esc(r["player"])}</b> <span class="muted">{r["pos"] or ""}</span></td>{"".join(cells)}'
                         f'<td class="n team">{r["started"]:.1f}</td><td class="n muted">{r["benched"]:.1f}</td></tr>')
+        tot = totals[t]
+        act, best = sum(a for a, _ in tot.values()), sum(b for _, b in tot.values())
+        def gap(d):
+            return f' <span class="neg" style="font-size:11px">+{d:.1f}</span>' if d > 0.05 else ""
+        foot = (f'<tr class="tot"><td>Starters total</td>' + "".join(f'<td class="n">{tot[w][0]:.1f}</td>' for w in weeks)
+                + f'<td class="n">{act:.1f}</td><td></td></tr>'
+                + f'<tr class="tot"><td>Best possible <span class="muted" style="font-weight:400">(+ left on bench)</span></td>'
+                + "".join(f'<td class="n">{tot[w][1]:.1f}{gap(tot[w][1] - tot[w][0])}</td>' for w in weeks)
+                + f'<td class="n">{best:.1f}{gap(best - act)}</td><td></td></tr>')
         panels.append(f'<div data-panel="{i}"{"" if i == 0 else " hidden"}><table class="grid-t"><thead><tr><th>Player</th>{head}'
-                      f'<th class="n">Started</th><th class="n">Bench</th></tr></thead><tbody>{"".join(body)}</tbody></table></div>')
+                      f'<th class="n">Started</th><th class="n">Bench</th></tr></thead><tbody>{"".join(body)}</tbody><tfoot>{foot}</tfoot></table></div>')
     return (f'<div class="panel switch"><div class="hl-bar"><label for="grid-pick">Team</label><select id="grid-pick">{opts}</select></div>'
             f'<div class="scroll">{"".join(panels)}</div></div>'
             '<p class="note">Colored cells are starting-lineup scores (darker = more points, in 5-point steps). Gray italic numbers are points '
-            'scored on the bench. Blank cells are weeks the player wasn’t on the roster or didn’t play.</p>')
+            'scored on the bench. Blank cells are weeks the player wasn’t on the roster or didn’t play. Best possible = the highest-scoring '
+            'legal lineup from that week’s roster, picked after the games; the red number is how much more it would have scored.</p>')
 
 
 HIGHLIGHT_JS = """<script>

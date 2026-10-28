@@ -181,7 +181,8 @@ def build(league_id, out, with_winprob=True):
         ("carry", "Who carried each team", render.carry_bars(stats.carry(lg))),
         ("boom-bust", "Boom or bust", boom_bust_chart(lg)),
         ("team-grid", "Team by week", '<p class="lede">Every player on a team’s roster, week by week: what he scored and whether he was in the lineup.</p>'
-         + render.team_grids(lg.name, {n: stats.team_grid(lg, r) for r, n in lg.team.items()}, lg.weeks)),
+         + render.team_grids(lg.name, {n: stats.team_grid(lg, r) for r, n in lg.team.items()}, lg.weeks,
+                             {n: stats.week_totals(lg, r) for r, n in lg.team.items()})),
         ("draft", "Draft report card", draft_chart(lg)),
     ]
     toc = '<nav class="toc">' + "".join(f'<a href="#{k}">{esc(t)}</a>' for k, t, _ in sections) + '<a href="#history">Past weeks</a></nav>'
