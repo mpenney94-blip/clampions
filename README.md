@@ -38,7 +38,7 @@ python3 winprob.py <league_id> [--week N] [--out winprob.json]
 
 ## League dashboard
 
-`dashboard/` builds a static website for a Sleeper league: weekly recap, all-play standings, play-by-play win probability, schedule swap, points left on the bench, waiver wire, trade scorecard, draft report card, and a page for every past week.
+`dashboard/` builds a static website for a Sleeper league in two parts. **This week**: recap, awards, power rankings, playoff odds (simulated), next week's preview, play-by-play win probability, results vs. projections, close games and scoring trends. **Season so far**: all-play standings, schedule swap, position strength, injury and bye damage, bench points, waivers and waiver wars, trades, who carried each team, drafted vs. picked up, points by draft round, boom or bust, team by week and the draft report card. There's also a page for every past week.
 
 ```sh
 python3 -m dashboard.build <league_id> --out _site          # full build (about 2 minutes)

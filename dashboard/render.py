@@ -131,6 +131,13 @@ svg .hit{cursor:crosshair}
 .wp-tip{position:absolute;top:0;pointer-events:none;background:var(--surface);border:1px solid var(--rule);border-radius:8px;
  box-shadow:0 4px 16px rgba(0,0,0,.16);padding:6px 9px;font-size:12.5px;line-height:1.35;white-space:nowrap;font-variant-numeric:tabular-nums}
 .wp-tip .t{color:var(--ink3)}
+.chip{display:inline-block;font-size:11px;font-weight:700;border:1px solid currentColor;border-radius:999px;padding:0 6px;margin-left:6px;vertical-align:1px}
+.trend-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+.group-head{margin-top:56px;padding:14px 0 6px;border-bottom:3px solid var(--ink)}
+.group-head h2{font-size:36px;margin:0}
+.group-head p{margin:4px 0 0;color:var(--ink2)}
+nav.toc .grp{display:flex;flex-wrap:wrap;gap:6px;align-items:center;width:100%}
+nav.toc .grp>span{font:700 13px var(--display);letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);min-width:92px}
 footer{margin-top:56px;color:var(--ink3);font-size:14px;border-top:1px solid var(--rule);padding-top:16px}
 """
 
@@ -722,3 +729,195 @@ document.querySelectorAll('.hl').forEach(function (box) {
 def footer(updated, extra=""):
     return (f'<footer>Updated {updated.astimezone(PT):%a %b %-d, %Y at %-I:%M %p} PT. Data from the Sleeper API; win probability is an estimate '
             f'rebuilt from ESPN play-by-play and Sleeper projections, not Sleeper’s in-app number. {extra}</footer>')
+
+
+# ================================================================ week-to-week hub
+def _pct(p):
+    return "<1%" if 0 < p < .005 else ">99%" if .995 <= p < 1 else f"{p:.0%}"
+
+
+def _move(delta, fmt="{:+.0%}", eps=.005):
+    if delta > eps:
+        return f'<span class="pos" style="font-size:12px">▲ {fmt.format(delta).lstrip("+")}</span>'
+    if delta < -eps:
+        return f'<span class="neg" style="font-size:12px">▼ {fmt.format(-delta).lstrip("+")}</span>'
+    return '<span class="muted" style="font-size:12px">–</span>'
+
+
+def playoff_table(rows, prev, n_playoff, div_names):
+    pv = {x["team"]: x for x in prev}
+    trs = []
+    for x in rows:
+        p0 = pv.get(x["team"], {}).get("playoffs", x["playoffs"])
+        status = ' <span class="chip pos">Clinched</span>' if x["playoffs"] >= 1 else (' <span class="chip neg">Out</span>' if x["playoffs"] <= 0 else "")
+        trs.append(f'<tr><td class="team" style="white-space:nowrap">{esc(x["team"])}{status}</td>'
+                   f'<td class="muted" style="white-space:nowrap">{esc(div_names.get(x["division"], ""))}</td>'
+                   f'<td class="n">{x["wins"]:.0f}-{x["losses"]:.0f}</td>'
+                   f'<td class="barcell"><div style="display:flex;align-items:center;gap:8px"><div class="track" style="flex:1"><span style="width:{100 * x["playoffs"]:.1f}%;background:var(--a)"></span></div>'
+                   f'<b style="min-width:42px;text-align:right">{_pct(x["playoffs"])}</b></div></td>'
+                   f'<td class="n">{_move(x["playoffs"] - p0)}</td><td class="n">{_pct(x["bye"])}</td><td class="n">{_pct(x["first"])}</td>'
+                   f'<td class="n">{_pct(x["last"])}</td><td class="n">{x["proj_wins"]:.1f}</td></tr>')
+    return (f'<div class="panel scroll"><table><thead><tr><th>Team</th><th>Division</th><th class="n">Record</th><th>Make playoffs</th>'
+            f'<th class="n">This week</th><th class="n">Bye</th><th class="n">#1 seed</th><th class="n">Last place</th><th class="n">Proj. wins</th></tr></thead>'
+            f'<tbody>{"".join(trs)}</tbody></table></div>'
+            f'<p class="note">10,000 simulations of the rest of the regular season using the real remaining schedule. Each team’s weekly score is drawn '
+            f'from its own scoring so far, pulled toward the league average early in the year. {n_playoff} teams make the playoffs: both division '
+            'winners get the byes, then the best remaining records, with points for as the tiebreaker. Sleeper’s exact tiebreakers may differ. '
+            '“This week” is the change since last week’s results.</p>')
+
+
+def power_table(rows, prev_rank):
+    mx = max(x["score"] for x in rows) or 1
+    trs = []
+    for x in rows:
+        was = prev_rank.get(x["team"])
+        mv = (f'<span class="pos">▲{was - x["rank"]}</span>' if was and was > x["rank"] else
+              f'<span class="neg">▼{x["rank"] - was}</span>' if was and was < x["rank"] else '<span class="muted">–</span>')
+        trs.append(f'<tr><td class="team">{x["rank"]}</td><td class="n" style="font-size:13px">{mv}</td><td class="team" style="white-space:nowrap">{esc(x["team"])}</td>'
+                   f'<td class="barcell"><div class="track"><span style="width:{100 * x["score"] / mx:.1f}%;background:var(--a)"></span></div></td>'
+                   f'<td class="n team">{x["score"]:.0f}</td><td class="n">{pct_s(x["allplay"])}</td><td class="n">{x["ppg"]:.1f}</td><td class="n">{x["recent"]:.1f}</td></tr>')
+    return (f'<div class="panel scroll"><table><thead><tr><th>#</th><th class="n">Move</th><th>Team</th><th class="barcell">Power score</th><th class="n"></th>'
+            f'<th class="n">All-play</th><th class="n">PPG</th><th class="n">Last 3</th></tr></thead><tbody>{"".join(trs)}</tbody></table></div>'
+            '<p class="note">Power score (0–100) = 50% all-play win rate + 25% season points per game + 25% last three weeks’ points per game '
+            '(both as a rank against the league). Move = change from last week’s ranking.</p>')
+
+
+def awards_tiles(aw, week):
+    spec = [("upset", "Upset of the week", lambda v: f"{v:.0%}"), ("luckiest", "Luckiest win", lambda v: f"{v:.2f}"),
+            ("unluckiest", "Unluckiest loss", lambda v: f"{v:.2f}"), ("best_call", "Best lineup call", lambda v: f"{v:.0%}"),
+            ("worst_call", "Worst lineup call", lambda v: f"−{v:.1f}"), ("player", "Player of the week", lambda v: f"{v:.1f}"),
+            ("bench", "Bench disaster", lambda v: f"{v:.1f}")]
+    tiles = []
+    for k, label, f in spec:
+        if k not in aw:
+            continue
+        who, v, why = aw[k]
+        tiles.append(f'<div class="panel tile"><div class="k">{label}</div><div class="v">{f(v)}</div>'
+                     f'<div class="s"><b style="color:var(--ink)">{esc(who)}</b> {esc(why)}</div></div>')
+    return (f'<div class="tiles">{"".join(tiles)}</div><p class="note">Week {week}. Best lineup call = highest share of its best possible lineup; '
+            'upset = the winner with the lowest pregame win probability.</p>')
+
+
+def preview_cards(games, week):
+    if not games:
+        return '<div class="panel muted">No more regular-season games to preview.</div>'
+    cards = []
+    for g in games:
+        f, d = g["fav"], g["dog"]
+        def side(x, cls):
+            key = f'{esc(x["key"][0])} {x["key"][1]:.1f}' if x["key"] else ""
+            empty = (f'<div class="neg" style="font-size:12px">No projection (bye/out): {esc(", ".join(x["empty"]))}</div>' if x["empty"] else "")
+            return (f'<div><div class="team {cls}">{esc(x["team"])}</div><div style="font:700 26px/1.1 var(--display)">{x["proj"]:.1f}</div>'
+                    f'<div class="muted" style="font-size:13px">Key player: {key}</div>{empty}</div>')
+        cards.append(f'<div class="panel" style="display:grid;gap:8px">'
+                     f'<div style="display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:start">{side(f, "dot-a")}'
+                     f'<div class="muted" style="padding-top:22px">vs</div><div style="text-align:right">{side(d, "dot-b")}</div></div>'
+                     f'<div class="stack" style="height:10px"><span style="flex:{g["p"]:.3f};background:var(--a)"></span><span style="flex:{1 - g["p"]:.3f};background:var(--b)"></span></div>'
+                     f'<div style="display:flex;justify-content:space-between;font-size:13px"><b class="dot-a">{_pct(g["p"])}</b>'
+                     f'<span class="muted">projected margin {g["spread"]:.1f}</span><b class="dot-b">{_pct(1 - g["p"])}</b></div></div>')
+    close = games[0]
+    tile = (f'<p class="lede">Closest projected game: <b>{esc(close["fav"]["team"])}</b> vs <b>{esc(close["dog"]["team"])}</b> '
+            f'({_pct(close["p"])}–{_pct(1 - close["p"])}). Biggest favorite: <b>{esc(games[-1]["fav"]["team"])}</b> at {_pct(games[-1]["p"])}.</p>')
+    return (tile + f'<div class="grid2">{"".join(cards)}</div><p class="note">Week {week} odds from Sleeper projections (in this league’s scoring) for each team’s '
+            'current starting lineup, as of the last site update. Lineups and projections change before kickoff.</p>')
+
+
+def projection_table(rows, over, under, week):
+    mx = max(abs(r["act"] - r["proj"]) for r in rows) or 1
+    trs = []
+    for r in rows:
+        d = r["act"] - r["proj"]
+        ld = r["last_act"] - r["last_proj"]
+        w = 50 * abs(d) / mx
+        bar = (f'<div style="position:relative;height:10px;background:var(--grid);border-radius:5px">'
+               f'<span style="position:absolute;top:0;bottom:0;{"left:50%" if d >= 0 else f"right:50%"};width:{w:.1f}%;'
+               f'background:var({"--good" if d >= 0 else "--bad"});border-radius:5px"></span>'
+               f'<span style="position:absolute;left:50%;top:-3px;bottom:-3px;width:1px;background:var(--ink3)"></span></div>')
+        trs.append(f'<tr><td class="team" style="white-space:nowrap">{esc(r["team"])}</td><td class="barcell">{bar}</td>'
+                   f'<td class="n {"pos" if d >= 0 else "neg"}">{d:+.1f}</td><td class="n">{r["act"]:.1f}</td><td class="n muted">{r["proj"]:.1f}</td>'
+                   f'<td class="n {"pos" if ld >= 0 else "neg"}">{ld:+.1f}</td></tr>')
+    def plist(title, items, cls):
+        li = "".join(f'<tr><td><b>{esc(x["player"])}</b> <span class="muted">{esc(x["team"])} · {x["starts"]} starts</span></td>'
+                     f'<td class="n {cls}">{x["diff"]:+.1f}</td></tr>' for x in items)
+        return f'<div class="panel"><h3 class="{cls}">{title}</h3><table>{li}</table></div>'
+    return (f'<div class="panel scroll"><table><thead><tr><th>Team</th><th class="barcell">Season vs. projection</th><th class="n">+/−</th>'
+            f'<th class="n">Scored</th><th class="n">Projected</th><th class="n">Wk {week}</th></tr></thead><tbody>{"".join(trs)}</tbody></table></div>'
+            f'<div class="grid2" style="margin-top:14px">{plist("Beat their projections most", over, "pos")}{plist("Missed their projections most", under, "neg")}</div>'
+            '<p class="note">Starting-lineup points against Sleeper’s pregame projections, scored with this league’s settings. Players need 2+ starts.</p>')
+
+
+def close_table(rows, nail, margin=10):
+    trs = "".join(f'<tr><td class="team">{esc(x["team"])}</td><td class="n team">{x["w"]}-{x["l"]}</td>'
+                  f'<td class="n {"pos" if x["w"] > x["l"] else "neg" if x["w"] < x["l"] else "muted"}">{x["w"] - x["l"]:+d}</td></tr>' for x in rows)
+    ng = "".join(f'<tr><td class="muted" style="white-space:nowrap">Wk {g["week"]}</td><td><b>{esc(g["winner"])}</b> {g["ws"]:.2f} – {g["ls"]:.2f} {esc(g["loser"])}</td>'
+                 f'<td class="n team">{g["margin"]:.2f}</td></tr>' for g in nail[:8])
+    n5 = sum(1 for g in nail if g["margin"] < 5)
+    return (f'<p class="lede">{len(nail)} games decided by less than {margin} points so far, {n5} by less than 5.</p>'
+            f'<div class="grid2"><div class="panel"><h3>Record in games decided by &lt;{margin}</h3><table>{trs}</table></div>'
+            f'<div class="panel"><h3>Closest games</h3><table>{ng}</table></div></div>')
+
+
+def trend_cards(rows, league, weeks):
+    lo = min(min(r["pts"]) for r in rows + [{"pts": league}])
+    hi = max(max(r["pts"]) for r in rows + [{"pts": league}])
+    lo, hi = math.floor(lo / 10) * 10, math.ceil(hi / 10) * 10
+    W, H, l, r_, t, b = 240, 90, 6, 6, 8, 16
+    X = lambda i: l + (W - l - r_) * (i / max(1, len(weeks) - 1))
+    Y = lambda v: t + (H - t - b) * (1 - (v - lo) / (hi - lo or 1))
+    cards = []
+    for x in rows:
+        diff = x["recent"] - x["season"]
+        pts = " ".join(f'{X(i):.1f},{Y(v):.1f}' for i, v in enumerate(x["roll"]))
+        lgp = " ".join(f'{X(i):.1f},{Y(v):.1f}' for i, v in enumerate(league))
+        dots = "".join(f'<circle cx="{X(i):.1f}" cy="{Y(v):.1f}" r="2.5" class="dot"><title>Week {weeks[i]}: {v:.1f}</title></circle>' for i, v in enumerate(x["pts"]))
+        svg = (f'<svg viewBox="0 0 {W} {H}" role="img" aria-label="{esc(x["team"])} scoring trend">'
+               f'<polyline points="{lgp}" fill="none" style="stroke:var(--ink3);stroke-dasharray:3 3;stroke-width:1.2"/>{dots}'
+               f'<polyline points="{pts}" fill="none" style="stroke:var({"--good" if diff >= 0 else "--bad"});stroke-width:2.2"/>'
+               f'<text x="{l}" y="{H - 3}">Wk {weeks[0]}</text><text x="{W - r_}" y="{H - 3}" text-anchor="end">Wk {weeks[-1]}</text></svg>')
+        cards.append(f'<div class="panel" style="padding:12px 14px"><div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline">'
+                     f'<b style="font-size:14px">{esc(x["team"])}</b><span class="{"pos" if diff >= 0 else "neg"}" style="font-size:13px">{"▲" if diff >= 0 else "▼"} {abs(diff):.1f}</span></div>'
+                     f'{svg}<div class="muted" style="font-size:12px">Last 3: <b style="color:var(--ink)">{x["recent"]:.1f}</b> · season {x["season"]:.1f}</div></div>')
+    return (f'<div class="trend-grid">{"".join(cards)}</div><p class="note">Colored line = 3-week rolling average (green if the last three weeks beat the season '
+            'average, red if not); dots = each week’s score; dashed line = league average. Sorted from hottest to coldest.</p>')
+
+
+def position_table(rows, avg):
+    n = len(rows)
+    head = "".join(f'<th class="n">{p}</th>' for p in avg)
+    trs = []
+    for x in rows:
+        cells = []
+        for p in avg:
+            rk = x["rank"][p]
+            step = max(1, min(7, round(7 - 6 * (rk - 1) / max(1, n - 1))))
+            fg = "#fff" if step >= 5 else "var(--ink)"
+            cells.append(f'<td class="w" style="background:var(--r{step});color:{fg}" title="{p}: {x["ppg"][p]:.1f} per week (#{rk})">{x["ppg"][p]:.1f}'
+                         f'<div style="font-size:10px;font-weight:400;opacity:.85">#{rk}</div></td>')
+        trs.append(f'<tr><td class="team" style="white-space:nowrap">{esc(x["team"])}</td>{"".join(cells)}<td class="n team">{x["avg_rank"]:.1f}</td></tr>')
+    foot = '<tr class="tot"><td>League average</td>' + "".join(f'<td class="n">{v:.1f}</td>' for v in avg.values()) + '<td></td></tr>'
+    return (f'<div class="panel scroll"><table class="grid-t"><thead><tr><th>Team</th>{head}<th class="n">Avg rank</th></tr></thead>'
+            f'<tbody>{"".join(trs)}</tbody><tfoot>{foot}</tfoot></table></div>'
+            '<p class="note">Starting-lineup points per week from each position (flex points go to the player’s position), with the league rank underneath. '
+            'Darker = better rank. Sorted by average rank across positions.</p>')
+
+
+def availability_table(rows, min_ppg=8):
+    mx = max((x["bye"] + x["inj"]) for x in rows) or 1
+    trs = []
+    for x in rows:
+        tot = x["bye"] + x["inj"]
+        worst = ", ".join(f'{esc(n)} <span class="muted">{v:.0f}</span>' for n, v in x["worst"]) or '<span class="muted">—</span>'
+        dead = (f'<span class="neg">{len(x["dead"])}</span> <span class="muted" style="font-size:12px">'
+                f'({esc(", ".join(f"Wk {w} {n}" for w, n in x["dead"]))})</span>' if x["dead"] else '<span class="muted">0</span>')
+        trs.append(f'<tr><td class="team" style="white-space:nowrap">{esc(x["team"])}</td>'
+                   f'<td class="barcell"><div class="stack" style="height:12px;min-width:120px;background:var(--grid)">'
+                   f'<span style="flex:{x["inj"] / mx:.4f};background:var(--bad)" title="Injured/inactive: {x["inj"]:.1f}"></span>'
+                   f'<span style="flex:{x["bye"] / mx:.4f};background:var(--c4)" title="Byes: {x["bye"]:.1f}"></span>'
+                   f'<span style="flex:{max(0, 1 - tot / mx):.4f};background:transparent"></span></div></td>'
+                   f'<td class="n team">{x["inj"]:.0f}</td><td class="n">{x["bye"]:.0f}</td><td>{worst}</td><td>{dead}</td></tr>')
+    legend = ('<div class="legend"><span><i style="background:var(--bad)"></i>Injured / inactive</span>'
+              '<span><i style="background:var(--c4)"></i>Bye week</span></div>')
+    return (f'<div class="panel scroll">{legend}<table><thead><tr><th>Team</th><th class="barcell">Points lost</th><th class="n">Injury</th><th class="n">Bye</th>'
+            f'<th>Hardest-hit (injury)</th><th>Starts with no game</th></tr></thead><tbody>{"".join(trs)}</tbody></table></div>'
+            f'<p class="note">Each week a player on the roster who averages {min_ppg}+ points a game didn’t play, his season average counts as points lost: '
+            'to a bye if his NFL team was off, otherwise to injury or inactivity. “Starts with no game” are players left in the lineup who didn’t play.</p>')
