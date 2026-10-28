@@ -25,14 +25,16 @@ class League:
         self.slots = [s for s in self.info["roster_positions"] if s not in ("BN", "IR", "TAXI")]
         self.weeks = list(range(self.info["settings"].get("start_week", 1), self.info["settings"].get("last_scored_leg", 0) + 1))
         users = {u["user_id"]: u for u in c.league_users(league_id)}
-        self.team, self.roster_now = {}, {}
+        self.team, self.roster_now, self.division = {}, {}, {}
         for r in c.rosters(league_id):
             self.roster_now[r["roster_id"]] = set(r.get("players") or [])
+            self.division[r["roster_id"]] = (r.get("settings") or {}).get("division")
             u = users.get(r["owner_id"]) or {}
             self.team[r["roster_id"]] = (u.get("metadata") or {}).get("team_name") or u.get("display_name") or f"Team {r['roster_id']}"
         self.players = c.players()
         self.matchups = {w: c.matchups(league_id, w) for w in self.weeks}
         self.pts = collections.defaultdict(dict)  # player_id -> week -> league-scored points (anyone, rostered or not)
+        self.played = collections.defaultdict(set)  # week -> players who were active for a game
         for w in self.weeks:
             rows = winprob._fetch(f"https://api.sleeper.app/stats/nfl/{self.season}/{w}?season_type=regular"
                                   + "".join(f"&position[]={p}" for p in POSITIONS))
@@ -40,6 +42,7 @@ class League:
                 s = r.get("stats") or {}
                 if s.get("gp") or s.get("gms_active") or r["player_id"].isalpha():
                     self.pts[r["player_id"]][w] = round(winprob.score_stats(s, self.scoring), 2)
+                    self.played[w].add(r["player_id"])
             for m in self.matchups[w]:  # Sleeper's own numbers win where we have them
                 for pid, v in (m.get("players_points") or {}).items():
                     self.pts[pid][w] = v
@@ -49,6 +52,15 @@ class League:
         drafts = c.league_drafts(league_id)
         self.picks = c.draft_picks(drafts[0]["draft_id"]) if drafts else []
         self._kickoffs = {}
+        st_ = self.info["settings"]
+        self.playoff_teams = st_.get("playoff_teams") or 0
+        self.playoff_start = st_.get("playoff_week_start") or 0
+        self.reg_weeks = list(range(st_.get("start_week", 1), self.playoff_start)) if self.playoff_start else self.weeks
+        self.next_week = self.weeks[-1] + 1 if self.weeks else 1
+        self._proj = {}
+        sched = winprob._fetch(f"https://api.sleeper.app/schedule/nfl/regular/{self.season}")
+        all_teams = {t for g in sched for t in (g["home"], g["away"])}
+        self.bye = {w: all_teams - {t for g in sched if g["week"] == w for t in (g["home"], g["away"])} for w in {g["week"] for g in sched}}
 
     # ---- helpers
     def name_of(self, pid):
@@ -69,6 +81,17 @@ class League:
             if m.get("matchup_id") is not None:
                 by[m["matchup_id"]].append(m["roster_id"])
         return {a: b for pair in by.values() if len(pair) == 2 for a, b in (pair, pair[::-1])}
+
+    def proj(self, w):
+        """(league-scored projection by player, team by player) for week w."""
+        if w not in self._proj:
+            self._proj[w] = winprob.projections(self.season, w, self.scoring)
+        return self._proj[w]
+
+    def matchups_for(self, w):
+        if w not in self.matchups:
+            self.matchups[w] = self.client.matchups(self.id, w)
+        return self.matchups[w]
 
     def kickoffs(self, w):
         if w not in self._kickoffs:
