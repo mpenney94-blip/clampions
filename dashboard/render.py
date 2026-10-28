@@ -535,12 +535,12 @@ def carry_bars(rows):
 def source_bars(src):
     kinds = [("draft", "Drafted", 1), ("waiver", "Waiver / free agent", 2), ("trade", "Trade", 3)]
     legend = '<div class="legend">' + "".join(f'<span><i style="background:var(--c{c})"></i>{lab}</span>' for _, lab, c in kinds) + '</div>'
-    opts = ('<option value="total" data-plain data-hint="Most starting-lineup points first">Total points</option>'
-            + "".join(f'<option value="{k}" data-label="{lab}"{" selected" if k == "waiver" else ""}>{lab} share</option>' for k, lab, _ in kinds))
+    opts = ('<option value="total" data-plain data-hint="Most starting-lineup points first" selected>Total points</option>'
+            + "".join(f'<option value="{k}" data-label="{lab}">{lab} share</option>' for k, lab, _ in kinds))
     controls = (f'<div class="hl-bar"><label for="sources-sort">Sort by</label><select id="sources-sort" autocomplete="off">{opts}</select>'
                 f'<span class="muted sort-hint"></span></div>')
     trs = []
-    for r in sorted(src.values(), key=lambda r: -r["waiver"] / (r["total"] or 1)):
+    for r in sorted(src.values(), key=lambda r: -r["total"]):
         segs, data = [], [f'data-total="{r["total"]:.1f}"']
         for k, lab, c in kinds:
             share = r[k] / (r["total"] or 1)
