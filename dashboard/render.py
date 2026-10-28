@@ -311,13 +311,16 @@ def _text_w(s, size):
 
 
 def scatter(points, *, xmax, ymax, ystep, xlabel, ylabel, xfmt=str, xreverse=False, xticks=None, rounds=None,
-            curve=None, quadrants=(), groups=None, W=1040, H=560):
+            curve=None, quadrants=(), groups=None, xscale=None, W=1040, H=560):
     """points: dicts with x, y, r, cls ('dot'|'good'|'bad'), label, sub, ring ('good'|'bad'|None), title.
 
     With groups (a list of names), each point may carry group (an index into it) plus glabel/gsub. Every group gets
-    its own hidden label layer naming all of its points, which highlight_box() shows when that group is picked."""
+    its own hidden label layer naming all of its points, which highlight_box() shows when that group is picked.
+    xscale (e.g. math.sqrt) stretches the x axis; ticks then get vertical gridlines so the spacing reads."""
     l, r, t, b = 64, 24, 16, 56
-    X = (lambda v: l + (W - l - r) * (xmax - v) / xmax) if xreverse else (lambda v: l + (W - l - r) * v / xmax)
+    f = xscale or (lambda v: v)
+    frac = lambda v: f(max(v, 0)) / f(xmax)
+    X = (lambda v: l + (W - l - r) * (1 - frac(v))) if xreverse else (lambda v: l + (W - l - r) * frac(v))
     Y = lambda v: t + (H - t - b) * (1 - v / ymax)
     s = [f'<svg viewBox="0 0 {W} {H}" role="img" aria-label="{esc(ylabel)} by {esc(xlabel)}">']
     for v in range(0, int(ymax) + 1, ystep):
@@ -329,6 +332,8 @@ def scatter(points, *, xmax, ymax, ystep, xlabel, ylabel, xfmt=str, xreverse=Fal
             if i:
                 s.append(f'<line class="gridl" stroke-dasharray="2 4" x1="{X(i * per + .5):.1f}" x2="{X(i * per + .5):.1f}" y1="{t}" y2="{H - b}"/>')
     for v in (xticks or []):
+        if xscale:
+            s.append(f'<line class="gridl" x1="{X(v):.1f}" x2="{X(v):.1f}" y1="{t}" y2="{H - b}"/>')
         s.append(f'<text x="{X(v):.1f}" y="{H - b + 20}" text-anchor="middle">{xfmt(v)}</text>')
     s.append(f'<text x="{(l + W - r) / 2}" y="{H - 8}" text-anchor="middle" style="fill:var(--ink2);font-weight:600;font-size:13px">{esc(xlabel)}</text>')
     s.append(f'<text x="14" y="{(t + H - b) / 2}" text-anchor="middle" transform="rotate(-90 14 {(t + H - b) / 2})" style="fill:var(--ink2);font-weight:600;font-size:13px">{esc(ylabel)}</text>')
