@@ -197,11 +197,12 @@ def waiver_wars(lg):
                     "winner": lg.team[win["adds"][pid]], "win_bid": (win.get("settings") or {}).get("waiver_bid", 0),
                     "losers": sorted(losers, key=lambda x: -x["bid"]), "since": sum(lg.pts[pid][w] for w in weeks), "games": len(weeks)})
     out.sort(key=lambda x: -x["since"])
-    per_team = collections.defaultdict(lambda: {"lost": 0, "missed": 0.0, "best": None})
+    per_team = collections.defaultdict(lambda: {"lost": 0, "missed": 0.0, "best": None, "claims": []})
     for c in out:
         for lo in {x["team"]: x for x in c["losers"]}.values():
             t = per_team[lo["team"]]
             t["lost"] += 1
+            t["claims"].append({"claim": c, "bid": lo["bid"]})
             t["missed"] += c["since"]
             if not t["best"] or c["since"] > t["best"]["since"]:
                 t["best"] = c
