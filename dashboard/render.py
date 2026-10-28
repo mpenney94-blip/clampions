@@ -530,12 +530,13 @@ def carry_bars(rows):
 def source_bars(src):
     kinds = [("draft", "Drafted", 1), ("waiver", "Waiver / free agent", 2), ("trade", "Trade", 3)]
     legend = '<div class="legend">' + "".join(f'<span><i style="background:var(--c{c})"></i>{lab}</span>' for _, lab, c in kinds) + '</div>'
-    opts = "".join(f'<option value="{k}" data-label="{lab}"{" selected" if k == "waiver" else ""}>{lab} share</option>' for k, lab, _ in kinds)
+    opts = ('<option value="total" data-plain data-hint="Most starting-lineup points first">Total points</option>'
+            + "".join(f'<option value="{k}" data-label="{lab}"{" selected" if k == "waiver" else ""}>{lab} share</option>' for k, lab, _ in kinds))
     controls = (f'<div class="hl-bar"><label for="sources-sort">Sort by</label><select id="sources-sort" autocomplete="off">{opts}</select>'
                 f'<span class="muted sort-hint"></span></div>')
     trs = []
     for r in sorted(src.values(), key=lambda r: -r["waiver"] / (r["total"] or 1)):
-        segs, data = [], []
+        segs, data = [], [f'data-total="{r["total"]:.1f}"']
         for k, lab, c in kinds:
             share = r[k] / (r["total"] or 1)
             data.append(f'data-{k}="{share:.4f}" data-{k}-pts="{r[k]:.1f}"')
@@ -544,14 +545,15 @@ def source_bars(src):
                             f'{f"{share:.0%}" if share >= .08 else ""}</span>')
         best = r["best"].get("waiver")
         trs.append(f'<tr {" ".join(data)}><td class="muted rank"></td><td class="team" style="white-space:nowrap">{esc(r["team"])}</td>'
-                   f'<td style="width:40%"><div class="stack">{"".join(segs)}</div></td>'
+                   f'<td style="width:34%"><div class="stack">{"".join(segs)}</div></td>'
                    f'<td class="n">{r["draft"]:.1f}</td><td class="n">{r["waiver"]:.1f}</td><td class="n">{r["trade"]:.1f}</td>'
-                   f'<td>{esc(best[0]) + f" <span class=muted>{best[1]:.1f}</span>" if best else "<span class=muted>—</span>"}</td></tr>')
+                   f'<td class="n team">{r["total"]:.1f}</td>'
+                   f'<td style="white-space:nowrap">{esc(best[0]) + f" <span class=muted>{best[1]:.1f}</span>" if best else "<span class=muted>—</span>"}</td></tr>')
     return (f'<div class="panel scroll sortbars">{controls}{legend}<table><thead><tr><th></th><th>Team</th><th>Share of starting-lineup points</th>'
-            f'<th class="n">Drafted</th><th class="n">Waiver/FA</th><th class="n">Trade</th><th>Best pickup</th></tr></thead><tbody>{"".join(trs)}</tbody></table></div>'
+            f'<th class="n">Drafted</th><th class="n">Waiver/FA</th><th class="n">Trade</th><th class="n">Total</th><th>Best pickup</th></tr></thead><tbody>{"".join(trs)}</tbody></table></div>'
             '<p class="note">Starting-lineup points only, credited to how that team got the player at the time: drafted it, picked it up '
             '(waiver claim or free agent) or traded for it. A drafted player who was dropped and picked back up counts as a pickup. '
-            'Pick a source to rank teams by how much of their scoring came from it.</p>')
+            'Pick a source to rank teams by how much of their scoring came from it, or Total points to rank by starting-lineup points.</p>')
 
 
 def round_table(src, rounds):
