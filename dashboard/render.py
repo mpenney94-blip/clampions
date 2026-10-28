@@ -901,23 +901,66 @@ def position_table(rows, avg):
             'Darker = better rank. Sorted by average rank across positions.</p>')
 
 
-def availability_table(rows, min_ppg=8):
-    mx = max((x["bye"] + x["inj"]) for x in rows) or 1
-    trs = []
-    for x in rows:
-        tot = x["bye"] + x["inj"]
-        worst = ", ".join(f'{esc(n)} <span class="muted">{v:.0f}</span>' for n, v in x["worst"]) or '<span class="muted">—</span>'
-        dead = (f'<span class="neg">{len(x["dead"])}</span> <span class="muted" style="font-size:12px">'
-                f'({esc(", ".join(f"Wk {w} {n}" for w, n in x["dead"]))})</span>' if x["dead"] else '<span class="muted">0</span>')
-        trs.append(f'<tr><td class="team" style="white-space:nowrap">{esc(x["team"])}</td>'
-                   f'<td class="barcell"><div class="stack" style="height:12px;min-width:120px;background:var(--grid)">'
-                   f'<span style="flex:{x["inj"] / mx:.4f};background:var(--bad)" title="Injured/inactive: {x["inj"]:.1f}"></span>'
-                   f'<span style="flex:{x["bye"] / mx:.4f};background:var(--c4)" title="Byes: {x["bye"]:.1f}"></span>'
-                   f'<span style="flex:{max(0, 1 - tot / mx):.4f};background:transparent"></span></div></td>'
-                   f'<td class="n team">{x["inj"]:.0f}</td><td class="n">{x["bye"]:.0f}</td><td>{worst}</td><td>{dead}</td></tr>')
-    legend = ('<div class="legend"><span><i style="background:var(--bad)"></i>Injured / inactive</span>'
-              '<span><i style="background:var(--c4)"></i>Bye week</span></div>')
-    return (f'<div class="panel scroll">{legend}<table><thead><tr><th>Team</th><th class="barcell">Points lost</th><th class="n">Injury</th><th class="n">Bye</th>'
-            f'<th>Hardest-hit (injury)</th><th>Starts with no game</th></tr></thead><tbody>{"".join(trs)}</tbody></table></div>'
-            f'<p class="note">Each week a player on the roster who averages {min_ppg}+ points a game didn’t play, his season average counts as points lost: '
-            'to a bye if his NFL team was off, otherwise to injury or inactivity. “Starts with no game” are players left in the lineup who didn’t play.</p>')
+def _xrows(key, rows, cells, detail, ncols):
+    return "".join(f'<tr class="xrow" tabindex="0" role="button" aria-expanded="false" aria-controls="{key}-{i}">'
+                   f'<td class="team" style="white-space:nowrap"><span class="chev" aria-hidden="true">▸</span> {esc(x["team"])}</td>{cells(x)}</tr>'
+                   f'<tr class="xdetail" id="{key}-{i}" hidden><td colspan="{ncols}">{detail(x)}</td></tr>' for i, x in enumerate(rows))
+
+
+def _plist(items, empty):
+    if not items:
+        return f'<span class="muted">{empty}</span>'
+    return '<table class="picks">' + "".join(f'<tr><td class="muted">Wk {w}</td><td><b>{esc(n)}</b>{extra}</td><td class="n team">{v:.1f}</td></tr>'
+                                             for w, n, v, extra in items) + '</table>'
+
+
+def bye_table(rows, min_ppg=8):
+    mx = max(x["lost"] + x["to_come"] for x in rows) or 1
+
+    def cells(x):
+        return (f'<td class="barcell"><div class="stack" style="height:12px;min-width:120px;background:var(--grid)">'
+                f'<span style="flex:{x["lost"] / mx:.4f};background:var(--c4)" title="Lost so far: {x["lost"]:.1f}"></span>'
+                f'<span style="flex:{x["to_come"] / mx:.4f};background:var(--c4);opacity:.4" title="Still to come: {x["to_come"]:.1f}"></span>'
+                f'<span style="flex:{max(0, 1 - (x["lost"] + x["to_come"]) / mx):.4f};background:transparent"></span></div></td>'
+                f'<td class="n team">{x["lost"]:.0f}</td><td class="n">{x["to_come"]:.0f}</td><td class="n muted">{x["lost"] + x["to_come"]:.0f}</td>')
+
+    def detail(x):
+        return (f'<div class="grid2"><div><h3>Lost so far</h3>{_plist([(w, n, v, "") for w, n, v in x["past"]], "No byes yet")}</div>'
+                f'<div><h3>Still to come (current roster)</h3>{_plist([(w, n, v, "") for w, n, v in x["future"]], "None left")}</div></div>')
+    legend = ('<div class="legend"><span><i style="background:var(--c4)"></i>Lost so far</span>'
+              '<span><i style="background:var(--c4);opacity:.4"></i>Still to come</span></div>')
+    return (f'<div class="panel scroll">{legend}<table class="expand"><thead><tr><th>Team</th><th class="barcell">Points lost to byes</th>'
+            f'<th class="n">So far</th><th class="n">To come</th><th class="n">Season</th></tr></thead>'
+            f'<tbody>{_xrows("bye", rows, cells, detail, 5)}</tbody></table></div>'
+            f'<p class="note">Each bye week of a player who averages {min_ppg}+ points a game counts his season average as points lost. '
+            '“So far” uses the roster each team had that week; “To come” uses today’s roster and the rest of the regular season’s bye weeks, '
+            'so it will move with trades and pickups. Click a team for the players.</p>')
+
+
+def injury_table(rows, min_ppg=8):
+    mx = max(x["out"] + x["early"] for x in rows) or 1
+
+    def cells(x):
+        dead = (f'<span class="neg">{len(x["dead"])}</span>' if x["dead"] else '<span class="muted">0</span>')
+        return (f'<td class="barcell"><div class="stack" style="height:12px;min-width:120px;background:var(--grid)">'
+                f'<span style="flex:{x["out"] / mx:.4f};background:var(--bad)" title="Missed games: {x["out"]:.1f}"></span>'
+                f'<span style="flex:{x["early"] / mx:.4f};background:var(--c1)" title="Left hurt: {x["early"]:.1f}"></span>'
+                f'<span style="flex:{max(0, 1 - (x["out"] + x["early"]) / mx):.4f};background:transparent"></span></div></td>'
+                f'<td class="n team">{x["out"]:.0f}</td><td class="n">{x["early"]:.0f}</td><td class="n">{dead}</td>')
+
+    def detail(x):
+        missed = _plist([(w, n, v, "") for w, n, v in x["missed"]], "No missed games")
+        left = _plist([(w, n, v, f' <span class="muted">scored {got:.1f}{"" if st else " · bench"}</span>') for w, n, v, got, st in x["left"]],
+                      "Nobody left a game hurt")
+        dead = ", ".join(f"Wk {w} {esc(n)}" for w, n in x["dead"]) or "None"
+        return (f'<div class="grid2"><div><h3>Missed games</h3>{missed}</div><div><h3>Left a game hurt</h3>{left}</div></div>'
+                f'<div class="muted" style="margin-top:8px;font-size:13px">Starts with no game: {dead}</div>')
+    legend = ('<div class="legend"><span><i style="background:var(--bad)"></i>Missed games</span>'
+              '<span><i style="background:var(--c1)"></i>Left a game hurt</span></div>')
+    return (f'<div class="panel scroll">{legend}<table class="expand"><thead><tr><th>Team</th><th class="barcell">Points lost to injury</th>'
+            f'<th class="n">Missed</th><th class="n">Left hurt</th><th class="n">Dead starts</th></tr></thead>'
+            f'<tbody>{_xrows("inj", rows, cells, detail, 5)}</tbody></table></div>'
+            f'<p class="note">Only players averaging {min_ppg}+ points a game count. <b>Missed</b>: he was on the roster but didn’t play while his NFL team did '
+            '(injury, illness, inactive or suspension), costing his season average. <b>Left hurt</b>: ESPN’s play-by-play logged him '
+            '“injured during the play” and he never showed up in a play again or got a “returned to the game” note; the cost is his season average '
+            'minus what he’d scored when he went down. <b>Dead starts</b>: players left in the lineup who didn’t play at all. Click a team for the players.</p>')

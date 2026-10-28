@@ -226,7 +226,8 @@ def build(league_id, out, with_winprob=True):
         ("close", "Close games", render.close_table(*weekly.close_games(lg))),
         ("trends", "Scoring trends", render.trend_cards(tr_rows, tr_league, lg.weeks)),
         ("position", "Position strength", render.position_table(*weekly.position_strength(lg))),
-        ("injuries", "Injury and bye damage", render.availability_table(weekly.availability(lg))),
+        ("byes", "Bye week damage", render.bye_table(weekly.byes(lg))),
+        ("injuries", "Injury damage", render.injury_table(weekly.injuries(lg))),
         ("bench", "Points left on the bench", render.bench_table(stats.bench(lg))),
         ("waivers", "Waiver wire", pickups_chart(lg)),
         ("waiver-wars", "Waiver wars", '<p class="lede">Players more than one team put in a claim for, who won them, and what the losing bidders missed out on.</p>'

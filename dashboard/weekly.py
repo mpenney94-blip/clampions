@@ -1,9 +1,10 @@
 """Week-to-week stats: playoff odds, power rankings, awards, next-week preview, projections, close games, trends,
-plus the season-long position-strength and injury/bye views."""
+plus the season-long position-strength, bye and injury views."""
 
 import collections
 import math
 import random
+import re
 import statistics as st
 
 import winprob
@@ -264,32 +265,95 @@ def position_strength(lg):
     return sorted(rows, key=lambda x: x["avg_rank"]), avg
 
 
-# ---------------------------------------------------------------- injury and bye damage (season)
-def availability(lg, min_ppg=8.0):
-    """Points of real contributors who were on the roster but couldn't play, split into byes and injuries/inactives,
-    plus starts wasted on players who didn't play at all."""
+# ---------------------------------------------------------------- byes and injuries (season)
+def _ppg(lg):
     games = collections.Counter(p for w in lg.weeks for p in lg.played[w])
-    ppg = {p: sum(lg.pts[p].get(w, 0) for w in lg.weeks if p in lg.played[w]) / n for p, n in games.items()}
+    return {p: sum(lg.pts[p].get(w, 0) for w in lg.weeks if p in lg.played[w]) / n for p, n in games.items()}
+
+
+def _nfl_team(lg, p, w=None):
+    if p.isalpha():
+        return p
+    return (lg.proj(w)[1].get(p) if w else None) or (lg.players.get(p) or {}).get("team")
+
+
+def byes(lg, min_ppg=8.0):
+    """Season averages of contributors lost to byes so far, and still to come for the current roster."""
+    ppg = _ppg(lg)
     out = []
     for r, name in lg.team.items():
-        bye = inj = 0.0
-        dead, worst = [], collections.Counter()
+        past, future = [], []
         for w in lg.weeks:
             m = next(m for m in lg.matchups[w] if m["roster_id"] == r)
-            _, teams = lg.proj(w)
             for p in m.get("players") or []:
-                if p in lg.played[w]:
-                    continue  # he played
-                v = ppg.get(p, 0)
-                team = p if p.isalpha() else teams.get(p) or (lg.players.get(p) or {}).get("team")
-                if p in m["starters"] and p != "0":
-                    dead.append((w, lg.name_of(p)))
-                if v < min_ppg:
-                    continue
-                if team in lg.bye.get(w, set()):
-                    bye += v
-                else:
-                    inj += v
-                    worst[lg.name_of(p)] += v
-        out.append({"team": name, "bye": bye, "inj": inj, "dead": dead, "worst": worst.most_common(2)})
-    return sorted(out, key=lambda x: -(x["bye"] + x["inj"]))
+                if ppg.get(p, 0) >= min_ppg and p not in lg.played[w] and _nfl_team(lg, p, w) in lg.bye.get(w, set()):
+                    past.append((w, lg.name_of(p), ppg[p]))
+        for w in (x for x in lg.reg_weeks if x >= lg.next_week):
+            for p in lg.roster_now.get(r, ()):
+                if ppg.get(p, 0) >= min_ppg and _nfl_team(lg, p) in lg.bye.get(w, set()):
+                    future.append((w, lg.name_of(p), ppg[p]))
+        out.append({"team": name, "past": sorted(past), "future": sorted(future),
+                    "lost": sum(v for *_, v in past), "to_come": sum(v for *_, v in future)})
+    return sorted(out, key=lambda x: -(x["lost"] + x["to_come"]))
+
+
+_INJ = re.compile(r"([A-Z]{2,3})-((?:[A-Z][a-z]?\.)?[A-Z][\w'.-]*(?: [A-Z][\w'.-]+)*) (was injured during the play|has returned to the game)")
+
+
+def injury_exits(lg, w):
+    """{(espn name token like 'E.Arroyo', game's teams)} for players who got hurt during a play in week w and never came back."""
+    hurt = set()
+    for g in winprob.espn_games(lg.season, w):
+        try:
+            items, page = [], 1
+            while True:
+                d = winprob._fetch(winprob.ESPN_PLAYS.format(id=g["id"], page=page))
+                items += d["items"]
+                if page >= d.get("pageCount", 1):
+                    break
+                page += 1
+        except Exception as e:  # one bad game shouldn't sink the page
+            print(f"plays for {g['name']} failed: {e}")
+            continue
+        state = {}  # name -> still out?  Any later mention in a play (not an injury note) means he came back.
+        for pl in sorted(items, key=lambda p: int(p["sequenceNumber"])):
+            text = pl.get("text") or ""
+            plain = re.sub(r"\*\* Injury Update:.*", "", _INJ.sub("", text))
+            for n in [n for n, out in state.items() if out and re.search(rf"(?<![\w.]){re.escape(n)}\b", plain)]:
+                state[n] = False
+            for m in _INJ.finditer(text):
+                state[m.group(2)] = m.group(3).startswith("was")
+        hurt |= {(n, tuple(g["teams"])) for n, out in state.items() if out}
+    return hurt
+
+
+def _matches(lg, p, token):
+    first, _, last = token.partition(".")
+    info = lg.players.get(p) or {}
+    norm = lambda x: "".join(ch for ch in x.lower() if ch.isalnum())
+    return norm(info.get("last_name") or "") == norm(last) and (info.get("first_name") or "").lower().startswith(first.lower())
+
+
+def injuries(lg, min_ppg=8.0):
+    """Points lost to injury: games missed while the player's NFL team played, and games he left hurt and never returned to,
+    plus starts wasted on players who didn't play at all."""
+    ppg = _ppg(lg)
+    exits = {w: injury_exits(lg, w) for w in lg.weeks}
+    out = []
+    for r, name in lg.team.items():
+        missed, left, dead = [], [], []
+        for w in lg.weeks:
+            m = next(m for m in lg.matchups[w] if m["roster_id"] == r)
+            for p in m.get("players") or []:
+                v, team = ppg.get(p, 0), _nfl_team(lg, p, w)
+                if p not in lg.played[w]:
+                    if p in m["starters"] and p != "0":
+                        dead.append((w, lg.name_of(p)))
+                    if v >= min_ppg and team not in lg.bye.get(w, set()):
+                        missed.append((w, lg.name_of(p), v))
+                elif v >= min_ppg and not p.isalpha() and any(team in ts and _matches(lg, p, n) for n, ts in exits[w]):
+                    got = lg.pts[p].get(w, 0)
+                    left.append((w, lg.name_of(p), max(0.0, v - got), got, p in m["starters"]))
+        out.append({"team": name, "missed": missed, "left": left, "dead": dead,
+                    "out": sum(x[2] for x in missed), "early": sum(x[2] for x in left)})
+    return sorted(out, key=lambda x: -(x["out"] + x["early"]))
