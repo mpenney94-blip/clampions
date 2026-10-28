@@ -489,23 +489,28 @@ POS_ORDER = ["QB", "RB", "WR", "TE", "K", "DEF"]
 
 def carry_bars(rows):
     legend = '<div class="legend">' + "".join(f'<span><i style="background:var(--c{i})"></i>{p}</span>' for i, p in enumerate(POS_ORDER, 1)) + '</div>'
+    opts = '<option value="top">Top player’s share</option>' + "".join(f'<option value="{p}">{p} share</option>' for p in POS_ORDER)
+    controls = (f'<div class="hl-bar"><label for="carry-sort">Sort by</label><select id="carry-sort" autocomplete="off">{opts}</select>'
+                f'<span class="muted carry-hint"></span></div>')
     trs = []
     for r in rows:
-        segs = []
+        segs, data = [], [f'data-top="{r["top"]["share"]:.4f}"']
         for i, p in enumerate(POS_ORDER, 1):
             v = r["by_pos"].get(p, 0)
             share = v / r["total"]
+            data.append(f'data-{p.lower()}="{share:.4f}" data-{p.lower()}-pts="{v:.1f}"')
             if share <= 0:
                 continue
             txt = f"{share:.0%}" if share >= .09 else ""
-            segs.append(f'<span style="flex:{share:.4f};background:var(--c{i})" title="{p}: {v:.1f} pts ({share:.0%})">{txt}</span>')
+            segs.append(f'<span data-pos="{p}" style="flex:{share:.4f};background:var(--c{i})" title="{p}: {v:.1f} pts ({share:.0%})">{txt}</span>')
         t = r["top"]
-        trs.append(f'<tr><td class="team">{esc(r["team"])}</td><td style="width:50%"><div class="stack">{"".join(segs)}</div></td>'
+        trs.append(f'<tr {" ".join(data)}><td class="muted rank"></td><td class="team" style="white-space:nowrap">{esc(r["team"])}</td><td style="width:40%"><div class="stack">{"".join(segs)}</div></td>'
+                   f'<td class="n team carry-sel" hidden></td>'
                    f'<td>{esc(t["player"])} <b>{t["share"]:.0%}</b> <span class="muted">{t["pts"]:.0f} pts</span></td></tr>')
-    return (f'<div class="panel scroll">{legend}<table><thead><tr><th>Team</th><th>Share of starting-lineup points, by position</th>'
-            f'<th>Top player’s share</th></tr></thead><tbody>{"".join(trs)}</tbody></table></div>'
+    return (f'<div class="panel scroll carry">{controls}{legend}<table><thead><tr><th></th><th>Team</th><th>Share of starting-lineup points, by position</th>'
+            f'<th class="n carry-sel" hidden></th><th>Top player’s share</th></tr></thead><tbody>{"".join(trs)}</tbody></table></div>'
             '<p class="note">Only points scored by players in the starting lineup count. Flex points go to the player’s own position. '
-            'Teams are sorted by how much of their scoring came from a single player.</p>')
+            'Pick a position to rank teams by how much of their scoring came from it.</p>')
 
 
 def source_bars(src):
@@ -603,6 +608,26 @@ def team_grids(lg_name, grids, weeks, totals):
 
 
 HIGHLIGHT_JS = """<script>
+document.querySelectorAll('.carry').forEach(function (box) {
+  var sel = box.querySelector('select'), body = box.querySelector('tbody'), hint = box.querySelector('.carry-hint');
+  function apply() {
+    var v = sel.value, k = v.toLowerCase(), rows = Array.prototype.slice.call(body.rows);
+    rows.sort(function (a, b) { return +b.getAttribute('data-' + k) - +a.getAttribute('data-' + k); });
+    rows.forEach(function (r, i) {
+      body.appendChild(r);
+      r.querySelector('.rank').textContent = i + 1;
+      var c = r.querySelector('td.carry-sel');
+      c.hidden = v === 'top';
+      if (v !== 'top') c.textContent = Math.round(+r.getAttribute('data-' + k) * 100) + '% · ' + r.getAttribute('data-' + k + '-pts');
+      r.querySelectorAll('.stack span').forEach(function (s) { s.style.opacity = v === 'top' || s.getAttribute('data-pos') === v ? '' : '.3'; });
+    });
+    box.querySelector('th.carry-sel').hidden = v === 'top';
+    box.querySelector('th.carry-sel').textContent = v === 'top' ? '' : v + ' share · pts';
+    hint.textContent = v === 'top' ? 'Most reliant on one player first' : 'Highest ' + v + ' share first';
+  }
+  sel.addEventListener('change', apply);
+  apply();
+});
 document.querySelectorAll('.wp-card').forEach(function (card) {
   var pts = JSON.parse(card.getAttribute('data-pts')), W = +card.getAttribute('data-w');
   var svg = card.querySelector('svg'), tip = card.querySelector('.wp-tip'), plot = card.querySelector('.wp-plot');
