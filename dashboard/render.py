@@ -84,6 +84,10 @@ svg.hl-on [class^="ring-"].sel{opacity:1}
 .grid-t td.w{text-align:center;min-width:44px;font-weight:700;border:2px solid var(--surface);padding:6px 4px}
 .grid-t tr.tot td.n{text-align:center}
 .grid-t tr.tot td{font-weight:700;border-top:2px solid var(--rule);border-bottom:0;white-space:nowrap}
+.grid-t td.kept{outline:2.5px solid var(--ink);outline-offset:-3px}
+.star{color:var(--c4);margin-left:3px;font-size:.9em}
+svg text.star{fill:var(--c4);font-size:12px;paint-order:stroke;stroke:var(--surface);stroke-width:3px}
+svg.hl-on text.star{opacity:.15}svg.hl-on text.star.sel{opacity:1}
 .grid-t td.bn{color:var(--ink3);font-weight:400;font-style:italic}
 .tipwrap{position:relative;padding:8px 0;cursor:help;outline:none}
 .tipwrap:hover .track>span,.tipwrap:focus .track>span{background:var(--a)}
@@ -301,19 +305,28 @@ def scatter(points, *, xmax, ymax, ystep, xlabel, ylabel, xfmt=str, xreverse=Fal
         p["_c"] = (cx, cy)
         dots.append((cx, cy, p["r"]))
         fill = {"dot": "", "a": ' style="fill:var(--a)"', "good": ' style="fill:var(--good)"', "bad": ' style="fill:var(--bad)"'}[p.get("cls", "dot")]
-        g = f' data-g="{p["group"]}"' if p.get("group") is not None else ""
+        gs = p.get("group")
+        gs = [gs] if isinstance(gs, int) else (gs or [])
+        p["_groups"] = gs
+        g = f' data-g="{" ".join(map(str, gs))}"' if gs else ""
         s.append(f'<circle class="dot" cx="{cx:.1f}" cy="{cy:.1f}" r="{p["r"]:.1f}"{fill}{g}><title>{esc(p.get("title", ""))}</title></circle>')
         if p.get("ring"):
             s.append(f'<circle class="ring-{p["ring"]}" cx="{cx:.1f}" cy="{cy:.1f}" r="{p["r"] + 3:.1f}"{g}/>')
+        if p.get("star"):
+            s.append(f'<text class="star" x="{cx + p["r"] + 1:.1f}" y="{cy - p["r"] + 1:.1f}"{g}>★</text>')
 
     def hits(box, pts):
         x0, y0, x1, y1 = box
         return sum(1 for cx, cy, rr in pts if x0 - rr < cx < x1 + rr and y0 - rr < cy < y1 + rr)
 
-    def layer(labeled, marked, lab_key="label", sub_key="sub"):
+    def layer(labeled, marked, gi=None):
         placed, out = [], []
         for p in sorted(labeled, key=lambda p: -p.get("priority", 0)):
-            out += place(p, p[lab_key], p.get(sub_key, ""), placed, marked)
+            if gi is None:
+                lab, sub = p["label"], p.get("sub", "")
+            else:
+                lab, sub = (p.get("glabels") or {}).get(gi, (p.get("glabel"), p.get("gsub", "")))
+            out += place(p, lab, sub, placed, marked)
         return out
 
     def collides(box, placed, marked):
@@ -357,9 +370,9 @@ def scatter(points, *, xmax, ymax, ystep, xlabel, ylabel, xfmt=str, xreverse=Fal
     marked = [p["_c"] + (p["r"] + 4,) for p in points if p.get("label") or p.get("ring") or p.get("cls", "dot") != "dot"]
     s.append('<g class="lay" data-lay="all">' + "".join(layer([p for p in points if p.get("label")], marked)) + '</g>')
     for gi, _ in enumerate(groups or []):
-        mine = [p for p in points if p.get("group") == gi]
+        mine = [p for p in points if gi in p["_groups"]]
         s.append(f'<g class="lay" data-lay="{gi}" style="display:none">'
-                 + "".join(layer(mine, [p["_c"] + (p["r"] + 4,) for p in mine], "glabel", "gsub")) + '</g>')
+                 + "".join(layer(mine, [p["_c"] + (p["r"] + 4,) for p in mine], gi)) + '</g>')
     s.append('</svg>')
     return "".join(s)
 
@@ -432,10 +445,14 @@ def winprob_card(m):
             f'<div class="muted" style="font-size:13px">{stat}</div></div>')
 
 
-def highlight_box(svg, groups, summaries, what):
-    """Wrap a grouped scatter with a team picker that dims everyone else and labels the picked team's points."""
+def highlight_box(svg, groups, summaries, what, extra=0):
+    """Wrap a grouped scatter with a team picker that dims everyone else and labels the picked team's points.
+
+    The last `extra` groups are special views (like "Keepers only") listed right after "All teams"."""
+    teams = list(enumerate(groups))[:len(groups) - extra]
+    special = list(enumerate(groups))[len(groups) - extra:]
     opts = "".join(f'<option value="{i}" data-sum="{esc(summaries.get(g, ""))}">{esc(g)}</option>'
-                   for i, g in sorted(enumerate(groups), key=lambda ig: ig[1].lower()))
+                   for i, g in special + sorted(teams, key=lambda ig: ig[1].lower()))
     uid = f"hl{abs(hash(what)) % 10**6}"
     return (f'<div class="panel hl"><div class="hl-bar"><label for="{uid}">Highlight a team’s {esc(what)}</label>'
             f'<select id="{uid}"><option value="">All teams</option>{opts}</select><span class="hl-sum muted"></span></div>'
@@ -502,12 +519,19 @@ def round_table(src, rounds):
             step = max(1, min(7, round(7 * v / mx)))
             fg = "#fff" if step >= 5 else "var(--ink)"
             who = ", ".join(f"{n} {p:.1f}" for n, p in r["round_players"][i].most_common())
-            cells.append(f'<td class="w" style="background:var(--r{step});color:{fg}" title="{esc(who)}">{v:.0f}</td>')
-        trs.append(f'<tr><td class="team" style="white-space:nowrap">{esc(r["team"])}</td>{"".join(cells)}<td class="n team">{r["draft"]:.0f}</td></tr>')
-    return (f'<div class="panel scroll"><table class="grid-t"><thead><tr><th>Team</th>{head}<th class="n">Total</th></tr></thead>'
+            kept = r["keeper_round"] == i
+            if kept:
+                who = "Keeper: " + who
+            badge = '<span class="star" aria-label="keeper">★</span>' if kept else ""
+            cells.append(f'<td class="w{" kept" if kept else ""}" style="background:var(--r{step});color:{fg}" title="{esc(who)}">{v:.0f}{badge}</td>')
+        trs.append(f'<tr><td class="team" style="white-space:nowrap">{esc(r["team"])}</td>{"".join(cells)}'
+                   f'<td class="n">{r["keeper"]:.0f}</td><td class="n">{r["draft"] - r["keeper"]:.0f}</td><td class="n team">{r["draft"]:.0f}</td></tr>')
+    return (f'<div class="panel scroll"><table class="grid-t"><thead><tr><th>Team</th>{head}<th class="n">Keeper</th><th class="n">New picks</th>'
+            f'<th class="n">Total</th></tr></thead>'
             f'<tbody>{"".join(trs)}</tbody></table></div>'
             '<p class="note">Starting-lineup points from each team’s own draft picks, by the round they were taken. Darker = more points; '
-            'hover a cell to see the players. Picks that were traded away, dropped or never started count as –.</p>')
+            'hover a cell to see the players. Outlined cells with a ★ are each team’s keeper, taken in that round’s slot; '
+            '“New picks” is everything else from this year’s draft. Picks that were traded away, dropped or never started count as –.</p>')
 
 
 def team_grids(lg_name, grids, weeks, totals):
@@ -563,7 +587,7 @@ document.querySelectorAll('.hl').forEach(function (box) {
   function apply() {
     var v = sel.value;
     svg.classList.toggle('hl-on', v !== '');
-    svg.querySelectorAll('[data-g]').forEach(function (e) { e.classList.toggle('sel', e.getAttribute('data-g') === v); });
+    svg.querySelectorAll('[data-g]').forEach(function (e) { e.classList.toggle('sel', v !== '' && e.getAttribute('data-g').split(' ').indexOf(v) >= 0); });
     svg.querySelectorAll('.lay').forEach(function (g) { g.style.display = g.getAttribute('data-lay') === (v === '' ? 'all' : v) ? '' : 'none'; });
     sum.textContent = v === '' ? '' : sel.selectedOptions[0].getAttribute('data-sum');
   }
