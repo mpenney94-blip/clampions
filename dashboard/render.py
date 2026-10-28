@@ -91,9 +91,9 @@ svg.hl-on [class^="ring-"].sel{opacity:1}
 .grid-t tr.tot td{font-weight:700;border-top:2px solid var(--rule);border-bottom:0;white-space:nowrap}
 .grid-t td.kept{outline:2.5px solid var(--ink);outline-offset:-3px}
 .star{color:var(--c4);margin-left:3px;font-size:.9em}
-svg text.star{fill:var(--c4);font-size:17px;paint-order:stroke;stroke:var(--surface);stroke-width:3px;cursor:default}
+svg text.star{fill:var(--c4);font-size:19px;paint-order:stroke;stroke:var(--surface);stroke-width:3px;cursor:default}
 svg .lay,svg .lab,svg .sub,svg .lead,svg [class^="ring-"]{pointer-events:none}
-svg.hl-on text.star{opacity:.15}svg.hl-on text.star.sel{opacity:1}
+svg.hl-on text.star{opacity:.2}svg.hl-on text.star.sel{opacity:1}
 .grid-t td.bn{color:var(--ink3);font-weight:400;font-style:italic}
 .tipwrap{position:relative;padding:8px 0;cursor:help;outline:none}
 .tipwrap:hover .track>span,.tipwrap:focus .track>span{background:var(--a)}
@@ -322,11 +322,13 @@ def scatter(points, *, xmax, ymax, ystep, xlabel, ylabel, xfmt=str, xreverse=Fal
         gs = [gs] if isinstance(gs, int) else (gs or [])
         p["_groups"] = gs
         g = f' data-g="{" ".join(map(str, gs))}"' if gs else ""
-        s.append(f'<circle class="dot" cx="{cx:.1f}" cy="{cy:.1f}" r="{p["r"]:.1f}"{fill}{g}><title>{esc(p.get("title", ""))}</title></circle>')
+        if p.get("star"):  # starred points (keepers) are drawn as the star itself instead of a dot
+            s.append(f'<text class="star" x="{cx:.1f}" y="{cy:.1f}" text-anchor="middle" dominant-baseline="central"{g}>★'
+                     f'<title>{esc(p.get("title", ""))}</title></text>')
+        else:
+            s.append(f'<circle class="dot" cx="{cx:.1f}" cy="{cy:.1f}" r="{p["r"]:.1f}"{fill}{g}><title>{esc(p.get("title", ""))}</title></circle>')
         if p.get("ring"):
-            s.append(f'<circle class="ring-{p["ring"]}" cx="{cx:.1f}" cy="{cy:.1f}" r="{p["r"] + 3:.1f}"{g}/>')
-        if p.get("star"):
-            s.append(f'<text class="star" x="{cx + p["r"] - 1:.1f}" y="{cy - p["r"] + 3:.1f}"{g}>★<title>{esc(p.get("title", ""))}</title></text>')
+            s.append(f'<circle class="ring-{p["ring"]}" cx="{cx:.1f}" cy="{cy:.1f}" r="{p["r"] + (5 if p.get("star") else 3):.1f}"{g}/>')
 
     def hits(box, pts):
         x0, y0, x1, y1 = box
