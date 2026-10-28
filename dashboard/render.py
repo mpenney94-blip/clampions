@@ -97,6 +97,8 @@ svg .lay,svg .lab,svg .sub,svg .lead,svg [class^="ring-"]{pointer-events:none}
 svg.hl-on text.star{opacity:.2}svg.hl-on text.star.sel{opacity:1}
 .grid-t .star{font-size:1.25em;vertical-align:-1px}
 .grid-t td.bn{color:var(--ink3);font-weight:400;font-style:italic}
+.tip b.gone{text-decoration:line-through;text-decoration-thickness:1.5px;color:var(--ink3)}
+.tip .gone-note{color:var(--bad);font-size:11.5px}
 .tipwrap{position:relative;padding:8px 0;cursor:help;outline:none}
 .tipwrap:hover .track>span,.tipwrap:focus .track>span{background:var(--a)}
 .tip{display:none;position:absolute;left:0;top:100%;z-index:5;background:var(--surface);border:1px solid var(--rule);border-radius:8px;

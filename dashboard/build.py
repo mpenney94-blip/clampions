@@ -99,9 +99,13 @@ def draft_chart(lg):
     def picks_tip(t):
         mine = sorted((z for z in rows if z["team"] == t), key=lambda z: z["pick"])
         trs = "".join(f'<tr><td class="muted">R{z["round"]}</td><td class="muted">#{z["pick"]}</td>'
-                      f'<td><b>{esc(z["player"])}</b>{"<span class=star>★</span>" if z["keeper"] else ""} <span class="muted">{z["pos"] or ""}</span></td>'
+                      f'<td><b{" class=gone" if z["gone"] else ""}>{esc(z["player"])}</b>{"<span class=star>★</span>" if z["keeper"] else ""} '
+                      f'<span class="muted">{z["pos"] or ""}</span>'
+                      f'{"<div class=gone-note>" + esc(z["gone"]) + "</div>" if z["gone"] else ""}</td>'
                       f'<td class="n team">{z["pts"]:.1f}</td></tr>' for z in mine)
-        return f'<div class="tip" role="tooltip"><div class="eyebrow">{esc(t)}’s draft</div><table>{trs}</table></div>'
+        n_gone = sum(1 for z in mine if z["gone"])
+        foot = f'<div class="muted" style="margin-top:6px">{n_gone} of {len(mine)} no longer on the team (struck through)</div>' if n_gone else ""
+        return f'<div class="tip" role="tooltip"><div class="eyebrow">{esc(t)}’s draft</div><table>{trs}</table>{foot}</div>'
     haul = "".join(f'<tr><td class="muted">{i}</td><td class="team">{esc(t)}</td><td class="barcell"><div class="tipwrap" tabindex="0" aria-label="{esc(t)}’s draft picks">'
                    f'<div class="track"><span style="width:{100 * v / mx:.1f}%"></span></div>{picks_tip(t)}</div></td>'
                    f'<td class="n team">{v:.0f}</td></tr>' for i, (t, v) in enumerate(sorted(tot.items(), key=lambda kv: -kv[1]), 1))
