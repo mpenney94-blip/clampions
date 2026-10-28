@@ -305,7 +305,10 @@ def scatter(points, *, xmax, ymax, ystep, xlabel, ylabel, xfmt=str, xreverse=Fal
         p["_c"] = (cx, cy)
         dots.append((cx, cy, p["r"]))
         fill = {"dot": "", "a": ' style="fill:var(--a)"', "good": ' style="fill:var(--good)"', "bad": ' style="fill:var(--bad)"'}[p.get("cls", "dot")]
-        g = f' data-g="{p["group"]}"' if p.get("group") is not None else ""
+        gs = p.get("group")
+        gs = [gs] if isinstance(gs, int) else (gs or [])
+        p["_groups"] = gs
+        g = f' data-g="{" ".join(map(str, gs))}"' if gs else ""
         s.append(f'<circle class="dot" cx="{cx:.1f}" cy="{cy:.1f}" r="{p["r"]:.1f}"{fill}{g}><title>{esc(p.get("title", ""))}</title></circle>')
         if p.get("ring"):
             s.append(f'<circle class="ring-{p["ring"]}" cx="{cx:.1f}" cy="{cy:.1f}" r="{p["r"] + 3:.1f}"{g}/>')
@@ -316,10 +319,14 @@ def scatter(points, *, xmax, ymax, ystep, xlabel, ylabel, xfmt=str, xreverse=Fal
         x0, y0, x1, y1 = box
         return sum(1 for cx, cy, rr in pts if x0 - rr < cx < x1 + rr and y0 - rr < cy < y1 + rr)
 
-    def layer(labeled, marked, lab_key="label", sub_key="sub"):
+    def layer(labeled, marked, gi=None):
         placed, out = [], []
         for p in sorted(labeled, key=lambda p: -p.get("priority", 0)):
-            out += place(p, p[lab_key], p.get(sub_key, ""), placed, marked)
+            if gi is None:
+                lab, sub = p["label"], p.get("sub", "")
+            else:
+                lab, sub = (p.get("glabels") or {}).get(gi, (p.get("glabel"), p.get("gsub", "")))
+            out += place(p, lab, sub, placed, marked)
         return out
 
     def collides(box, placed, marked):
@@ -363,9 +370,9 @@ def scatter(points, *, xmax, ymax, ystep, xlabel, ylabel, xfmt=str, xreverse=Fal
     marked = [p["_c"] + (p["r"] + 4,) for p in points if p.get("label") or p.get("ring") or p.get("cls", "dot") != "dot"]
     s.append('<g class="lay" data-lay="all">' + "".join(layer([p for p in points if p.get("label")], marked)) + '</g>')
     for gi, _ in enumerate(groups or []):
-        mine = [p for p in points if p.get("group") == gi]
+        mine = [p for p in points if gi in p["_groups"]]
         s.append(f'<g class="lay" data-lay="{gi}" style="display:none">'
-                 + "".join(layer(mine, [p["_c"] + (p["r"] + 4,) for p in mine], "glabel", "gsub")) + '</g>')
+                 + "".join(layer(mine, [p["_c"] + (p["r"] + 4,) for p in mine], gi)) + '</g>')
     s.append('</svg>')
     return "".join(s)
 
@@ -438,10 +445,14 @@ def winprob_card(m):
             f'<div class="muted" style="font-size:13px">{stat}</div></div>')
 
 
-def highlight_box(svg, groups, summaries, what):
-    """Wrap a grouped scatter with a team picker that dims everyone else and labels the picked team's points."""
+def highlight_box(svg, groups, summaries, what, extra=0):
+    """Wrap a grouped scatter with a team picker that dims everyone else and labels the picked team's points.
+
+    The last `extra` groups are special views (like "Keepers only") listed right after "All teams"."""
+    teams = list(enumerate(groups))[:len(groups) - extra]
+    special = list(enumerate(groups))[len(groups) - extra:]
     opts = "".join(f'<option value="{i}" data-sum="{esc(summaries.get(g, ""))}">{esc(g)}</option>'
-                   for i, g in sorted(enumerate(groups), key=lambda ig: ig[1].lower()))
+                   for i, g in special + sorted(teams, key=lambda ig: ig[1].lower()))
     uid = f"hl{abs(hash(what)) % 10**6}"
     return (f'<div class="panel hl"><div class="hl-bar"><label for="{uid}">Highlight a team’s {esc(what)}</label>'
             f'<select id="{uid}"><option value="">All teams</option>{opts}</select><span class="hl-sum muted"></span></div>'
@@ -576,7 +587,7 @@ document.querySelectorAll('.hl').forEach(function (box) {
   function apply() {
     var v = sel.value;
     svg.classList.toggle('hl-on', v !== '');
-    svg.querySelectorAll('[data-g]').forEach(function (e) { e.classList.toggle('sel', e.getAttribute('data-g') === v); });
+    svg.querySelectorAll('[data-g]').forEach(function (e) { e.classList.toggle('sel', v !== '' && e.getAttribute('data-g').split(' ').indexOf(v) >= 0); });
     svg.querySelectorAll('.lay').forEach(function (g) { g.style.display = g.getAttribute('data-lay') === (v === '' ? 'all' : v) ? '' : 'none'; });
     sum.textContent = v === '' ? '' : sel.selectedOptions[0].getAttribute('data-sum');
   }

@@ -75,8 +75,9 @@ def draft_chart(lg):
     best = sorted(rows, key=lambda z: -z["value"])[:6]
     busts = sorted([z for z in rows if z["round"] <= 4], key=lambda z: z["value"])[:5]
     ymax = max(30, (int(max(z["pts"] for z in rows)) // 30 + 1) * 30)
-    groups = sorted(lg.team.values(), key=str.lower)
+    groups = sorted(lg.team.values(), key=str.lower) + ["★ Keepers only"]
     gi = {t: i for i, t in enumerate(groups)}
+    kg = len(groups) - 1
     pts = []
     for z in rows:
         good, bad = z in best, z in busts
@@ -84,7 +85,8 @@ def draft_chart(lg):
                     "ring": "good" if good else "bad" if bad else None,
                     "label": (z["player"] + (" ★" if z["keeper"] else "")) if good or bad else None, "lab_color": "good" if good else "bad" if bad else None,
                     "sub": f'{z["team"]} · pick {z["pick"]} · {z["pts"]:.0f} pts', "priority": abs(z["value"]),
-                    "group": gi.get(z["team"]), "glabel": f'{z["player"]}{" ★" if z["keeper"] else ""} {z["pts"]:.0f}', "gsub": "",
+                    "group": [gi[z["team"]]] + ([kg] if z["keeper"] else []),
+                    "glabels": {kg: (f'{z["player"]} ★ {z["pts"]:.0f}', f'{z["team"]} · round {z["round"]}')}, "glabel": f'{z["player"]}{" ★" if z["keeper"] else ""} {z["pts"]:.0f}', "gsub": "",
                     "title": f'{z["player"]} ({z["pos"]}), pick {z["pick"]} by {z["team"]}{" (keeper)" if z["keeper"] else ""}: {z["pts"]:.1f} pts'})
     curve = [(z["pick"], z["exp"]) for z in sorted(rows, key=lambda z: z["pick"])]
     n = len(rows)
@@ -110,7 +112,12 @@ def draft_chart(lg):
             b = max(mine, key=lambda z: z["value"])
             sums[t] = (f'{len(mine)} picks · {tot[t]:.0f} pts (#{rank[t]} of {len(tot)}) · '
                        f'best value: {b["player"]}, pick {b["pick"]} ({render.signed(b["value"], 0)} vs typical)')
-    return (render.highlight_box(svg, groups, sums, "draft picks") +
+    kept = [z for z in rows if z["keeper"]]
+    if kept:
+        kb = max(kept, key=lambda z: z["value"])
+        sums[groups[kg]] = (f'{len(kept)} keepers · {sum(z["pts"] for z in kept):.0f} pts · best value: {kb["player"]}, '
+                            f'{kb["team"]}, round {kb["round"]} ({render.signed(kb["value"], 0)} vs typical)')
+    return (render.highlight_box(svg, groups, sums, "draft picks", extra=1) +
             f'<div class="grid2" style="margin-top:14px">{lst("Biggest steals", best, "pos")}{lst("Biggest busts (rounds 1–4)", busts, "neg")}</div>'
             f'<h3 style="margin-top:18px">Draft haul: total points from each team’s picks</h3><div class="panel scroll"><table>{haul}</table></div>'
             '<p class="note">Points are each drafted player’s fantasy points in this league’s scoring this season, wherever they ended up. '
@@ -122,8 +129,9 @@ def boom_bust_chart(lg):
     rows = stats.starts(lg)
     if not rows:
         return '<div class="panel muted">Not enough starts yet.</div>'
-    groups = sorted(lg.team.values(), key=str.lower)
+    groups = sorted(lg.team.values(), key=str.lower) + ["★ Keepers only"]
     gi = {t: i for i, t in enumerate(groups)}
+    kg = len(groups) - 1
     xmax = max(10, (int(max(r["avg"] for r in rows)) // 5 + 1) * 5)
     ymax = max(10, (int(max(r["sd"] for r in rows)) // 2 + 1) * 2)
     studs = sorted(rows, key=lambda r: -r["avg"])[:5]
