@@ -26,7 +26,7 @@ def winprob_section(lg, week, cache):
     cards = [render.winprob_card(m) for m in sorted(wp["matchups"], key=lambda m: -max(m["series"][-1][2], m["series"][-1][3]))]
     return ('<div class="grid2">' + "".join(cards) + '</div><p class="note">Each team starts at its projection. As every play happens '
             '(ESPN play-by-play), players bank their points and keep their projection for the share of their game still left; '
-            'the line is the chance the first-named team wins. Quiet stretches between game days are squeezed out. Times are Eastern.</p>')
+            'the line is the chance the first-named team wins. Quiet stretches between game days are squeezed out. Hover or tap a chart to see the odds at that moment. Times are Pacific.</p>')
 
 
 def pickups_chart(lg):
@@ -210,7 +210,7 @@ def build(league_id, out, with_winprob=True):
                  f'<section><h2>Recap</h2>{render.recap_tiles(stats.recap(lg, w))}</section>']
         if with_winprob:
             parts.append(f'<section><h2>Win probability</h2>{winprob_section(lg, w, wp_cache)}</section>')
-        parts.append(render.footer(now))
+        parts.append(render.footer(now) + render.HIGHLIGHT_JS)
         with open(os.path.join(out, "weeks", f"{w}.html"), "w") as f:
             f.write(render.page(f"{lg.name} · Week {w}", "".join(parts)))
     with open(os.path.join(out, ".nojekyll"), "w"):

@@ -2,11 +2,16 @@
 
 import datetime as dt
 import html
+import json
 import math
 import random
 
 esc = html.escape
-ET = dt.timezone(dt.timedelta(hours=-4))  # display times in US Eastern (regular season is EDT until early Nov)
+try:
+    from zoneinfo import ZoneInfo
+    PT = ZoneInfo("America/Los_Angeles")  # all displayed times are Pacific
+except Exception:  # no tz database available
+    PT = dt.timezone(dt.timedelta(hours=-8))
 
 CSS = """
 :root{--bg:#f6f7f9;--surface:#fff;--ink:#12151a;--ink2:#4b525c;--ink3:#7a828d;--rule:#e2e5ea;--grid:#eceef2;
@@ -100,6 +105,13 @@ svg.hl-on text.star{opacity:.15}svg.hl-on text.star.sel{opacity:1}
 .tippanel{overflow:visible}
 @media (max-width:640px){.tippanel{overflow-x:auto}
  .tip{position:fixed;left:12px;right:12px;bottom:max(12px,env(safe-area-inset-bottom));top:auto;width:auto;max-width:none;max-height:60vh;overflow:auto}}
+.wp-plot{position:relative}
+svg .xh{stroke:var(--ink3);stroke-width:1}
+svg .xd{stroke:var(--surface);stroke-width:2}
+svg .hit{cursor:crosshair}
+.wp-tip{position:absolute;top:0;pointer-events:none;background:var(--surface);border:1px solid var(--rule);border-radius:8px;
+ box-shadow:0 4px 16px rgba(0,0,0,.16);padding:6px 9px;font-size:12.5px;line-height:1.35;white-space:nowrap;font-variant-numeric:tabular-nums}
+.wp-tip .t{color:var(--ink3)}
 footer{margin-top:56px;color:var(--ink3);font-size:14px;border-top:1px solid var(--rule);padding-top:16px}
 """
 
@@ -191,7 +203,7 @@ def trade_cards(trades):
         margin = lead["total"] - min(s["total"] for s in t["sides"])
         mx = max(max((g["since"] for s in t["sides"] for g in s["got"]), default=1), 1)
         head = f'{esc(lead["team"])} ahead by {margin:.1f}' if w else "Too early to call"
-        body = [f'<div class="panel"><div class="eyebrow">Trade {i} · {t["when"].astimezone(ET):%b %-d} · counts {span}</div><h3>{head}</h3>']
+        body = [f'<div class="panel"><div class="eyebrow">Trade {i} · {t["when"].astimezone(PT):%b %-d} · counts {span}</div><h3>{head}</h3>']
         for s in t["sides"]:
             body.append(f'<div style="margin-top:10px;font-weight:700">{esc(s["team"])} got</div><table>')
             for g in s["got"]:
@@ -427,7 +439,7 @@ def winprob_card(m):
         area = f"M{X(pts[0][0]):.1f},{Y(.5):.1f}L" + d[1:] + f"L{X(pts[-1][0]):.1f},{Y(.5):.1f}Z"
         s.append(f'<path d="{area}" style="fill:var(--a-fill)" clip-path="url(#{cid}a)"/><path d="{area}" style="fill:var(--b-fill)" clip-path="url(#{cid}b)"/>'
                  f'<path d="{d}" style="fill:none;stroke:var(--a);stroke-width:2" clip-path="url(#{cid}a)"/><path d="{d}" style="fill:none;stroke:var(--b);stroke-width:2" clip-path="url(#{cid}b)"/>')
-        day = dt.datetime.fromtimestamp(g[0], ET).strftime("%a")
+        day = dt.datetime.fromtimestamp(g[0], PT).strftime("%a")
         if k == 0 or (day != last_day and x0s[k] - last_x > 34):
             s.append(f'<text x="{x0s[k]:.1f}" y="{H - 6}">{day}</text>')
             last_day, last_x = day, x0s[k]
@@ -437,13 +449,20 @@ def winprob_card(m):
     last = S[-1]
     s.append(f'<circle cx="{X(last[0]):.1f}" cy="{Y(last[1]):.1f}" r="4" style="fill:var({"--a" if last[1] >= .5 else "--b"})"/>')
     peak_a, peak_b = max(S, key=lambda p: p[1]), min(S, key=lambda p: p[1])
+    # hover layer: crosshair + dot, driven by WP_JS from the points in data-pts
+    s.append(f'<line class="xh" x1="0" x2="0" y1="{t}" y2="{H - b}" style="display:none"/><circle class="xd" r="4.5" style="display:none"/>'
+             f'<rect class="hit" x="{l}" y="0" width="{W - l - r}" height="{H}" fill="transparent"/>')
     s.append('</svg>')
+    hover = json.dumps([[round(X(p[0]), 1), round(Y(p[1]), 1), int(p[0]), round(p[1] * 100), round(p[2], 1), round(p[3], 1)] for p in S],
+                       separators=(",", ":"))
     h, a = m["home"], m["away"]
     final = not m.get("pending")
     stat = (f'Peak: <span class="dot-a">{esc(h["team"])} {peak_a[1]:.0%}</span> · <span class="dot-b">{esc(a["team"])} {1 - peak_b[1]:.0%}</span>'
             if final else f'Live: {esc(h["team"])} {last[1]:.0%} to win')
-    return (f'<div class="panel wp-card"><div class="score"><span class="dot-a">{esc(h["team"])} {last[2]:.2f}</span>'
-            f'<span class="dot-b" style="text-align:right">{last[3]:.2f} {esc(a["team"])}</span></div>{"".join(s)}'
+    return (f'<div class="panel wp-card" data-pts="{esc(hover)}" data-w="{W}" data-a="{esc(h["team"])}" data-b="{esc(a["team"])}">'
+            f'<div class="score"><span class="dot-a">{esc(h["team"])} {last[2]:.2f}</span>'
+            f'<span class="dot-b" style="text-align:right">{last[3]:.2f} {esc(a["team"])}</span></div>'
+            f'<div class="wp-plot">{"".join(s)}<div class="wp-tip" hidden></div></div>'
             f'<div class="muted" style="font-size:13px">{stat}</div></div>')
 
 
@@ -579,6 +598,32 @@ def team_grids(lg_name, grids, weeks, totals):
 
 
 HIGHLIGHT_JS = """<script>
+document.querySelectorAll('.wp-card').forEach(function (card) {
+  var pts = JSON.parse(card.getAttribute('data-pts')), W = +card.getAttribute('data-w');
+  var svg = card.querySelector('svg'), tip = card.querySelector('.wp-tip'), plot = card.querySelector('.wp-plot');
+  var xh = svg.querySelector('.xh'), xd = svg.querySelector('.xd'), hit = svg.querySelector('.hit');
+  var a = card.getAttribute('data-a'), b = card.getAttribute('data-b');
+  var fmt = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', weekday: 'short', hour: 'numeric', minute: '2-digit' });
+  function row(cls, name, v) { var d = document.createElement('div'); var s = document.createElement('span'); s.className = cls; s.textContent = name; d.append(s, ' ' + v); return d; }
+  function show(ev) {
+    var r = svg.getBoundingClientRect(), x = (ev.clientX - r.left) * W / r.width;
+    var lo = 0, hi = pts.length - 1;
+    while (lo < hi) { var mid = (lo + hi + 1) >> 1; if (pts[mid][0] <= x) lo = mid; else hi = mid - 1; }
+    if (lo + 1 < pts.length && Math.abs(pts[lo + 1][0] - x) < Math.abs(pts[lo][0] - x)) lo++;
+    var p = pts[lo];
+    xh.setAttribute('x1', p[0]); xh.setAttribute('x2', p[0]); xh.style.display = '';
+    xd.setAttribute('cx', p[0]); xd.setAttribute('cy', p[1]); xd.style.fill = p[3] >= 50 ? 'var(--a)' : 'var(--b)'; xd.style.display = '';
+    tip.textContent = '';
+    var t = document.createElement('div'); t.className = 't'; t.textContent = fmt.format(new Date(p[2] * 1000)) + ' PT'; tip.append(t);
+    tip.append(row('dot-a', a, p[3] + '%'), row('dot-b', b, (100 - p[3]) + '%'));
+    var sc = document.createElement('div'); sc.className = 't'; sc.textContent = 'Score ' + p[4].toFixed(1) + ' – ' + p[5].toFixed(1); tip.append(sc);
+    tip.hidden = false;
+    var px = p[0] * r.width / W, tw = tip.offsetWidth;
+    tip.style.left = Math.max(0, Math.min(px + 12 + tw > r.width ? px - tw - 12 : px + 12, r.width - tw)) + 'px';
+  }
+  function hide() { xh.style.display = 'none'; xd.style.display = 'none'; tip.hidden = true; }
+  hit.addEventListener('pointermove', show); hit.addEventListener('pointerdown', show); hit.addEventListener('pointerleave', hide);
+});
 document.querySelectorAll('.switch').forEach(function (box) {
   var sel = box.querySelector('select');
   function apply() { box.querySelectorAll('[data-panel]').forEach(function (p) { p.hidden = p.getAttribute('data-panel') !== sel.value; }); }
@@ -601,5 +646,5 @@ document.querySelectorAll('.hl').forEach(function (box) {
 
 
 def footer(updated, extra=""):
-    return (f'<footer>Updated {updated.astimezone(ET):%a %b %-d, %Y at %-I:%M %p} ET. Data from the Sleeper API; win probability is an estimate '
+    return (f'<footer>Updated {updated.astimezone(PT):%a %b %-d, %Y at %-I:%M %p} PT. Data from the Sleeper API; win probability is an estimate '
             f'rebuilt from ESPN play-by-play and Sleeper projections, not Sleeper’s in-app number. {extra}</footer>')
