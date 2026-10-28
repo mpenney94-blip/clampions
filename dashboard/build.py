@@ -96,7 +96,14 @@ def draft_chart(lg):
     for z in rows:
         tot[z["team"]] = tot.get(z["team"], 0) + z["pts"]
     mx = max(tot.values()) or 1
-    haul = "".join(f'<tr><td class="muted">{i}</td><td class="team">{esc(t)}</td><td class="barcell"><div class="track"><span style="width:{100 * v / mx:.1f}%"></span></div></td>'
+    def picks_tip(t):
+        mine = sorted((z for z in rows if z["team"] == t), key=lambda z: z["pick"])
+        trs = "".join(f'<tr><td class="muted">R{z["round"]}</td><td class="muted">#{z["pick"]}</td>'
+                      f'<td><b>{esc(z["player"])}</b>{"<span class=star>★</span>" if z["keeper"] else ""} <span class="muted">{z["pos"] or ""}</span></td>'
+                      f'<td class="n team">{z["pts"]:.1f}</td></tr>' for z in mine)
+        return f'<div class="tip" role="tooltip"><div class="eyebrow">{esc(t)}’s draft</div><table>{trs}</table></div>'
+    haul = "".join(f'<tr><td class="muted">{i}</td><td class="team">{esc(t)}</td><td class="barcell"><div class="tipwrap" tabindex="0" aria-label="{esc(t)}’s draft picks">'
+                   f'<div class="track"><span style="width:{100 * v / mx:.1f}%"></span></div>{picks_tip(t)}</div></td>'
                    f'<td class="n team">{v:.0f}</td></tr>' for i, (t, v) in enumerate(sorted(tot.items(), key=lambda kv: -kv[1]), 1))
 
     def lst(title, items, cls):
@@ -119,7 +126,8 @@ def draft_chart(lg):
                             f'{kb["team"]}, round {kb["round"]} ({render.signed(kb["value"], 0)} vs typical)')
     return (render.highlight_box(svg, groups, sums, "draft picks", extra=1) +
             f'<div class="grid2" style="margin-top:14px">{lst("Biggest steals", best, "pos")}{lst("Biggest busts (rounds 1–4)", busts, "neg")}</div>'
-            f'<h3 style="margin-top:18px">Draft haul: total points from each team’s picks</h3><div class="panel scroll"><table>{haul}</table></div>'
+            f'<h3 style="margin-top:18px">Draft haul: total points from each team’s picks</h3><p class="lede" style="margin:0 0 8px">Hover or tap a bar to see that team’s picks.</p>'
+            f'<div class="panel tippanel"><table>{haul}</table></div>'
             '<p class="note">Points are each drafted player’s fantasy points in this league’s scoring this season, wherever they ended up. '
             'The dashed line is the typical score for that draft slot (median of picks within 15 spots); steals and busts are measured against it. '
             '★ = keeper: kept from last season using that round’s pick rather than chosen in this year’s draft.</p>')
@@ -143,7 +151,8 @@ def boom_bust_chart(lg):
         lab = r in studs or r in wild or r in steady or r in duds
         pts.append({"x": r["avg"], "y": r["sd"], "r": 2 + 1.1 * r["starts"], "label": r["player"] if lab else None,
                     "sub": f'{r["team"]} · {r["avg"]:.1f} avg · {r["low"]:.1f}–{r["high"]:.1f}', "priority": r["avg"] + r["sd"],
-                    "group": gi[r["team"]], "glabel": r["player"], "gsub": f'{r["avg"]:.1f} avg · {r["low"]:.1f}–{r["high"]:.1f}',
+                    "group": [gi[r["team"]]] + ([kg] if r["keeper"] else []), "star": r["keeper"],
+                    "glabels": {kg: (f'{r["player"]} ★', f'{r["team"]} · {r["avg"]:.1f} avg · {r["low"]:.1f}–{r["high"]:.1f}')}, "glabel": r["player"], "gsub": f'{r["avg"]:.1f} avg · {r["low"]:.1f}–{r["high"]:.1f}',
                     "title": f'{r["player"]} ({r["pos"]}, {r["team"]}): {r["avg"]:.1f} avg over {r["starts"]} starts, range {r["low"]:.1f}–{r["high"]:.1f}'})
     svg = render.scatter(pts, xmax=xmax, ymax=ymax, ystep=2, xticks=range(0, xmax + 1, 5),
                          xlabel="Average points when started", ylabel="Week-to-week swing (std. dev.)", groups=groups,
@@ -155,9 +164,13 @@ def boom_bust_chart(lg):
         if mine:
             a, b = max(mine, key=lambda r: r["avg"]), max(mine, key=lambda r: r["sd"])
             sums[t] = f'{len(mine)} regular starters · best: {a["player"]} {a["avg"]:.1f} avg · wildest: {b["player"]} ({b["low"]:.1f} to {b["high"]:.1f})'
-    return (render.highlight_box(svg, groups, sums, "starters") +
+    kept = [r for r in rows if r["keeper"]]
+    if kept:
+        kb = max(kept, key=lambda r: r["avg"])
+        sums[groups[kg]] = f'{len(kept)} keepers with 4+ starts · best: {kb["player"]} {kb["avg"]:.1f} avg ({kb["team"]})'
+    return (render.highlight_box(svg, groups, sums, "starters", extra=1) +
             '<p class="note">Every player started at least 4 times, by his average when started and how much that score swings week to week. '
-            'Right = scores more; higher = less predictable. Bigger dots = more starts.</p>')
+            'Right = scores more; higher = less predictable. Bigger dots = more starts. ★ = keeper.</p>')
 
 
 def build(league_id, out, with_winprob=True):
