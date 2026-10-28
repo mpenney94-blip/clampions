@@ -255,7 +255,8 @@ def team_grid(lg, r):
         for pid in m.get("players") or []:
             if w in lg.pts.get(pid, {}) or pid in m["starters"]:
                 rows[pid][w] = (pp.get(pid, 0.0), pid in m["starters"])
-    out = [{"player": lg.name_of(pid), "pos": lg.pos_of(pid), "weeks": wk,
+    keepers = {p["player_id"] for p in lg.picks if p.get("is_keeper") and p["roster_id"] == r}
+    out = [{"player": lg.name_of(pid), "pos": lg.pos_of(pid), "weeks": wk, "keeper": pid in keepers,
             "started": sum(v for v, s in wk.values() if s), "benched": sum(v for v, s in wk.values() if not s)}
            for pid, wk in rows.items() if any(s for _, s in wk.values()) or sum(v for v, _ in wk.values()) >= 5]
     return sorted(out, key=lambda x: (-x["started"], -x["benched"]))
