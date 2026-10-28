@@ -18,11 +18,11 @@ CSS = """
 :root{--bg:#f6f7f9;--surface:#fff;--ink:#12151a;--ink2:#4b525c;--ink3:#7a828d;--rule:#e2e5ea;--grid:#eceef2;
 --a:#2a78d6;--a-fill:rgba(42,120,214,.14);--b:#eb6834;--b-fill:rgba(235,104,52,.14);--good:#1a7f3c;--bad:#c2410c;--mark:#b4bcc7;
 --r0:#f3f6fa;--r1:#dbe8f8;--r2:#b7d3f6;--r3:#86b6ef;--r4:#5598e7;--r5:#2a78d6;--r6:#1c5cab;--r7:#104281;
---c1:#2a78d6;--c2:#eb6834;--c3:#1baf7a;--c4:#eda100;--c5:#e87ba4;--c6:#008300;
+--c1:#2a78d6;--c2:#eb6834;--c3:#1baf7a;--c4:#eda100;--c5:#e87ba4;--c6:#008300;--c4b:#f2d28a;
 --display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;--body:"Source Sans 3",system-ui,-apple-system,"Segoe UI",sans-serif}
 @media (prefers-color-scheme:dark){:root{--bg:#111317;--surface:#1a1d22;--ink:#eef0f3;--ink2:#b9bfc8;--ink3:#8a919b;--rule:#2c3038;--grid:#252930;
 --a:#3987e5;--a-fill:rgba(57,135,229,.2);--b:#d95926;--b-fill:rgba(217,89,38,.2);--good:#3fb26a;--bad:#ef7a4a;--mark:#5b636e;
---c1:#3987e5;--c2:#d95926;--c3:#199e70;--c4:#c98500;--c5:#d55181;--c6:#008300;
+--c1:#3987e5;--c2:#d95926;--c3:#199e70;--c4:#c98500;--c5:#d55181;--c6:#008300;--c4b:#6b4f12;
 --r0:#1f242c;--r1:#1b3150;--r2:#184f95;--r3:#1c5cab;--r4:#256abf;--r5:#3987e5;--r6:#6da7ec;--r7:#9ec5f4;color-scheme:dark}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.5}
@@ -664,14 +664,16 @@ document.querySelectorAll('.sortbars').forEach(function (box) {
   var th = box.querySelector('th.sort-col');
   function apply() {
     var o = sel.selectedOptions[0], v = sel.value, k = v.toLowerCase(), plain = o.hasAttribute('data-plain'), lab = o.getAttribute('data-label') || v;
-    var rows = Array.prototype.slice.call(body.rows);
+    var rows = Array.prototype.slice.call(body.rows).filter(function (r) { return !r.classList.contains('xdetail'); });
     rows.sort(function (a, b) { return +b.getAttribute('data-' + k) - +a.getAttribute('data-' + k); });
     rows.forEach(function (r, i) {
       body.appendChild(r);
+      var d = r.getAttribute('aria-controls') && document.getElementById(r.getAttribute('aria-controls'));
+      if (d) body.appendChild(d);
       r.querySelector('.rank').textContent = i + 1;
       var c = r.querySelector('td.sort-col');
       if (c) { c.hidden = plain; if (!plain) c.textContent = Math.round(+r.getAttribute('data-' + k) * 100) + '% · ' + r.getAttribute('data-' + k + '-pts'); }
-      r.querySelectorAll('.stack span').forEach(function (s) { s.style.opacity = plain || s.getAttribute('data-pos') === v ? '' : '.3'; });
+      r.querySelectorAll('.stack span').forEach(function (s) { s.style.opacity = (plain && !o.hasAttribute('data-dim')) || v === 'total' || s.getAttribute('data-pos') === v ? '' : '.3'; });
     });
     if (th) { th.hidden = plain; th.textContent = plain ? '' : lab + ' share · pts'; }
     hint.textContent = o.getAttribute('data-hint') || ('Highest ' + lab + ' share first');
@@ -901,9 +903,10 @@ def position_table(rows, avg):
             'Darker = better rank. Sorted by average rank across positions.</p>')
 
 
-def _xrows(key, rows, cells, detail, ncols):
-    return "".join(f'<tr class="xrow" tabindex="0" role="button" aria-expanded="false" aria-controls="{key}-{i}">'
-                   f'<td class="team" style="white-space:nowrap"><span class="chev" aria-hidden="true">▸</span> {esc(x["team"])}</td>{cells(x)}</tr>'
+def _xrows(key, rows, cells, detail, ncols, data):
+    return "".join(f'<tr class="xrow" tabindex="0" role="button" aria-expanded="false" aria-controls="{key}-{i}" '
+                   + " ".join(f'data-{k}="{v:.2f}"' for k, v in data(x).items()) + '>'
+                   f'<td class="muted rank"></td><td class="team" style="white-space:nowrap"><span class="chev" aria-hidden="true">▸</span> {esc(x["team"])}</td>{cells(x)}</tr>'
                    f'<tr class="xdetail" id="{key}-{i}" hidden><td colspan="{ncols}">{detail(x)}</td></tr>' for i, x in enumerate(rows))
 
 
@@ -914,24 +917,36 @@ def _plist(items, empty):
                                              for w, n, v, extra in items) + '</table>'
 
 
+def _sort_controls(key, opts):
+    """Sort-by select for a .sortbars table; opts are (value, label, hint) with the default first."""
+    return (f'<div class="hl-bar"><label for="{key}-sort">Sort by</label><select id="{key}-sort" autocomplete="off">'
+            + "".join(f'<option value="{v}" data-plain data-dim data-hint="{esc(h)}"{" selected" if i == 0 else ""}>{esc(lab)}</option>'
+                      for i, (v, lab, h) in enumerate(opts))
+            + '</select><span class="muted sort-hint"></span></div>')
+
+
 def bye_table(rows, min_ppg=8):
     mx = max(x["lost"] + x["to_come"] for x in rows) or 1
 
     def cells(x):
         return (f'<td class="barcell"><div class="stack" style="height:12px;min-width:120px;background:var(--grid)">'
-                f'<span style="flex:{x["lost"] / mx:.4f};background:var(--c4)" title="Lost so far: {x["lost"]:.1f}"></span>'
-                f'<span style="flex:{x["to_come"] / mx:.4f};background:var(--c4);opacity:.4" title="Still to come: {x["to_come"]:.1f}"></span>'
+                f'<span data-pos="lost" style="flex:{x["lost"] / mx:.4f};background:var(--c4)" title="Lost so far: {x["lost"]:.1f}"></span>'
+                f'<span data-pos="future" style="flex:{x["to_come"] / mx:.4f};background:var(--c4b)" title="Still to come: {x["to_come"]:.1f}"></span>'
                 f'<span style="flex:{max(0, 1 - (x["lost"] + x["to_come"]) / mx):.4f};background:transparent"></span></div></td>'
-                f'<td class="n team">{x["lost"]:.0f}</td><td class="n">{x["to_come"]:.0f}</td><td class="n muted">{x["lost"] + x["to_come"]:.0f}</td>')
+                f'<td class="n">{x["lost"]:.0f}</td><td class="n">{x["to_come"]:.0f}</td><td class="n team">{x["lost"] + x["to_come"]:.0f}</td>')
 
     def detail(x):
         return (f'<div class="grid2"><div><h3>Lost so far</h3>{_plist([(w, n, v, "") for w, n, v in x["past"]], "No byes yet")}</div>'
                 f'<div><h3>Still to come (current roster)</h3>{_plist([(w, n, v, "") for w, n, v in x["future"]], "None left")}</div></div>')
     legend = ('<div class="legend"><span><i style="background:var(--c4)"></i>Lost so far</span>'
-              '<span><i style="background:var(--c4);opacity:.4"></i>Still to come</span></div>')
-    return (f'<div class="panel scroll">{legend}<table class="expand"><thead><tr><th>Team</th><th class="barcell">Points lost to byes</th>'
-            f'<th class="n">So far</th><th class="n">To come</th><th class="n">Season</th></tr></thead>'
-            f'<tbody>{_xrows("bye", rows, cells, detail, 5)}</tbody></table></div>'
+              '<span><i style="background:var(--c4b)"></i>Still to come</span></div>')
+    controls = _sort_controls("byes", [("total", "Season total", "Most points lost to byes, past and future, first"),
+                                       ("lost", "Lost so far", "Most bye points already lost first"),
+                                       ("future", "Still to come", "Most bye points still ahead first")])
+    data = lambda x: {"total": x["lost"] + x["to_come"], "lost": x["lost"], "future": x["to_come"]}
+    return (f'<div class="panel scroll sortbars">{controls}{legend}<table class="expand"><thead><tr><th></th><th>Team</th><th class="barcell">Points lost to byes</th>'
+            f'<th class="n">So far</th><th class="n">To come</th><th class="n">Total</th></tr></thead>'
+            f'<tbody>{_xrows("bye", rows, cells, detail, 6, data)}</tbody></table></div>'
             f'<p class="note">Each bye week of a player who averages {min_ppg}+ points a game counts his season average as points lost. '
             '“So far” uses the roster each team had that week; “To come” uses today’s roster and the rest of the regular season’s bye weeks, '
             'so it will move with trades and pickups. Click a team for the players.</p>')
@@ -942,25 +957,41 @@ def injury_table(rows, min_ppg=8):
 
     def cells(x):
         dead = (f'<span class="neg">{len(x["dead"])}</span>' if x["dead"] else '<span class="muted">0</span>')
+        cut = (f'<span class="neg">{len(x["cut"])}</span>' if x["cut"] else '<span class="muted">0</span>')
         return (f'<td class="barcell"><div class="stack" style="height:12px;min-width:120px;background:var(--grid)">'
-                f'<span style="flex:{x["out"] / mx:.4f};background:var(--bad)" title="Missed games: {x["out"]:.1f}"></span>'
-                f'<span style="flex:{x["early"] / mx:.4f};background:var(--c1)" title="Left hurt: {x["early"]:.1f}"></span>'
+                f'<span data-pos="missed" style="flex:{x["out"] / mx:.4f};background:var(--bad)" title="Missed games: {x["out"]:.1f}"></span>'
+                f'<span data-pos="left" style="flex:{x["early"] / mx:.4f};background:var(--c1)" title="Left hurt: {x["early"]:.1f}"></span>'
                 f'<span style="flex:{max(0, 1 - (x["out"] + x["early"]) / mx):.4f};background:transparent"></span></div></td>'
-                f'<td class="n team">{x["out"]:.0f}</td><td class="n">{x["early"]:.0f}</td><td class="n">{dead}</td>')
+                f'<td class="n">{x["out"]:.0f}</td><td class="n">{x["early"]:.0f}</td><td class="n team">{x["out"] + x["early"]:.0f}</td><td class="n">{dead}</td>'
+                f'<td class="n">{cut}</td>')
 
     def detail(x):
         missed = _plist([(w, n, v, "") for w, n, v in x["missed"]], "No missed games")
         left = _plist([(w, n, v, f' <span class="muted">scored {got:.1f}{"" if st else " · bench"}</span>') for w, n, v, got, st in x["left"]],
                       "Nobody left a game hurt")
-        dead = ", ".join(f"Wk {w} {esc(n)}" for w, n in x["dead"]) or "None"
+        dead = ('<table class="picks">' + "".join(f'<tr><td class="muted">Wk {w}</td><td><b>{esc(n)}</b> <span class="muted">{pos or ""}</span></td>'
+                                                  f'<td class="neg">{why}</td><td class="n team">0.0</td></tr>' for w, n, pos, why in x["dead"]) + '</table>'
+                if x["dead"] else '<span class="muted">None — every starter played</span>')
+        cut = ('<table class="picks">' + "".join(
+            f'<tr><td class="muted">Wk {c["week"]}</td><td><b>{esc(c["player"])}</b> <span class="muted">{c["pos"] or ""}</span></td>'
+            f'<td><span class="neg">{esc(c["status"])}{" · " + esc(c["injury"]) if c["injury"] else ""}</span></td>'
+            f'<td class="muted">{"now on " + esc(c["now"]) if c["now"] else "free agent"}</td><td class="n team">{c["ppg"]:.1f}/gm</td></tr>'
+            for c in x["cut"]) + '</table>') if x["cut"] else '<span class="muted">None</span>'
         return (f'<div class="grid2"><div><h3>Missed games</h3>{missed}</div><div><h3>Left a game hurt</h3>{left}</div></div>'
-                f'<div class="muted" style="margin-top:8px;font-size:13px">Starts with no game: {dead}</div>')
+                f'<div class="grid2" style="margin-top:12px"><div><h3>Dead starts</h3>{dead}</div><div><h3>Dropped while hurt</h3>{cut}</div></div>')
     legend = ('<div class="legend"><span><i style="background:var(--bad)"></i>Missed games</span>'
               '<span><i style="background:var(--c1)"></i>Left a game hurt</span></div>')
-    return (f'<div class="panel scroll">{legend}<table class="expand"><thead><tr><th>Team</th><th class="barcell">Points lost to injury</th>'
-            f'<th class="n">Missed</th><th class="n">Left hurt</th><th class="n">Dead starts</th></tr></thead>'
-            f'<tbody>{_xrows("inj", rows, cells, detail, 5)}</tbody></table></div>'
+    controls = _sort_controls("injuries", [("total", "Total", "Most points lost to injury first"),
+                                           ("missed", "Missed games", "Most points lost to missed games first"),
+                                           ("left", "Left hurt", "Most points lost to in-game injuries first"),
+                                           ("dead", "Dead starts", "Most starters who didn’t play first"),
+                                           ("cut", "Dropped while hurt", "Most injured players cut first")])
+    data = lambda x: {"total": x["out"] + x["early"], "missed": x["out"], "left": x["early"], "dead": len(x["dead"]) + (x["out"] + x["early"]) / 1e4,
+                      "cut": len(x["cut"]) + sum(c["ppg"] for c in x["cut"]) / 1e3}
+    return (f'<div class="panel scroll sortbars">{controls}{legend}<table class="expand"><thead><tr><th></th><th>Team</th><th class="barcell">Points lost to injury</th>'
+            f'<th class="n">Missed</th><th class="n">Left hurt</th><th class="n">Total</th><th class="n">Dead starts</th><th class="n">Dropped hurt</th></tr></thead>'
+            f'<tbody>{_xrows("inj", rows, cells, detail, 8, data)}</tbody></table></div>'
             f'<p class="note">Only players averaging {min_ppg}+ points a game count. <b>Missed</b>: he was on the roster but didn’t play while his NFL team did '
             '(injury, illness, inactive or suspension), costing his season average. <b>Left hurt</b>: ESPN’s play-by-play logged him '
             '“injured during the play” and he never showed up in a play again or got a “returned to the game” note; the cost is his season average '
-            'minus what he’d scored when he went down. <b>Dead starts</b>: players left in the lineup who didn’t play at all. Click a team for the players.</p>')
+            'minus what he’d scored when he went down. <b>Dead starts</b>: players left in the lineup who didn’t play at all (on bye or out). <b>Dropped hurt</b>: players averaging 5+ a game the team cut who are still listed injured (IR, PUP, out or doubtful) and haven’t played since; Sleeper doesn’t say whether an injury is season-ending, so the listed status and injury are shown instead. Click a team for the players.</p>')
