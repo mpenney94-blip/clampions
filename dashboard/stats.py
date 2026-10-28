@@ -273,6 +273,7 @@ def week_totals(lg, r):
 def sources(lg):
     """Starting-lineup points per team split by how the player got there: draft (and which round), waiver/free agent, or trade."""
     events = collections.defaultdict(list)  # (roster, player) -> [(effective week, time, kind, round)]
+    keepers = {(p["roster_id"], p["player_id"]) for p in lg.picks if p.get("is_keeper")}
     for p in lg.picks:
         events[(p["roster_id"], p["player_id"])].append((0, 0, "draft", p["round"]))
     for t in lg.transactions:
@@ -285,7 +286,8 @@ def sources(lg):
     out = {}
     for r, name in lg.team.items():
         row = {"team": name, "draft": 0.0, "waiver": 0.0, "trade": 0.0, "rounds": collections.Counter(),
-               "round_players": collections.defaultdict(collections.Counter),
+               "round_players": collections.defaultdict(collections.Counter), "keeper": 0.0,
+               "keeper_round": next((p["round"] for p in lg.picks if p.get("is_keeper") and p["roster_id"] == r), None),
                "players": collections.defaultdict(lambda: [0.0, None, None])}
         for w in lg.weeks:
             m = next(m for m in lg.matchups[w] if m["roster_id"] == r)
@@ -298,6 +300,8 @@ def sources(lg):
                 if kind == "draft":
                     row["rounds"][rnd] += v
                     row["round_players"][rnd][lg.name_of(pid)] += v
+                    if (r, pid) in keepers:
+                        row["keeper"] += v
                 pl = row["players"][pid]
                 pl[0] += v
                 pl[1], pl[2] = kind, rnd
@@ -331,7 +335,7 @@ def draft(lg, window=15):
     rows = []
     for p in lg.picks:
         pid = p["player_id"]
-        rows.append({"pick": p["pick_no"], "round": p["round"], "player": lg.name_of(pid),
+        rows.append({"pick": p["pick_no"], "round": p["round"], "player": lg.name_of(pid), "keeper": bool(p.get("is_keeper")),
                      "pos": lg.pos_of(pid) or (p.get("metadata") or {}).get("position"),
                      "team": lg.team.get(p["roster_id"], "?"), "pts": sum(lg.pts.get(pid, {}).get(w, 0) for w in lg.weeks)})
     for x in rows:

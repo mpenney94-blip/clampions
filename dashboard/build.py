@@ -80,12 +80,12 @@ def draft_chart(lg):
     pts = []
     for z in rows:
         good, bad = z in best, z in busts
-        pts.append({"x": z["pick"], "y": z["pts"], "r": 5, "z": good or bad,
+        pts.append({"x": z["pick"], "y": z["pts"], "r": 5, "z": good or bad, "star": z["keeper"],
                     "ring": "good" if good else "bad" if bad else None,
-                    "label": z["player"] if good or bad else None, "lab_color": "good" if good else "bad" if bad else None,
+                    "label": (z["player"] + (" ★" if z["keeper"] else "")) if good or bad else None, "lab_color": "good" if good else "bad" if bad else None,
                     "sub": f'{z["team"]} · pick {z["pick"]} · {z["pts"]:.0f} pts', "priority": abs(z["value"]),
-                    "group": gi.get(z["team"]), "glabel": f'{z["player"]} {z["pts"]:.0f}', "gsub": "",
-                    "title": f'{z["player"]} ({z["pos"]}), pick {z["pick"]} by {z["team"]}: {z["pts"]:.1f} pts'})
+                    "group": gi.get(z["team"]), "glabel": f'{z["player"]}{" ★" if z["keeper"] else ""} {z["pts"]:.0f}', "gsub": "",
+                    "title": f'{z["player"]} ({z["pos"]}), pick {z["pick"]} by {z["team"]}{" (keeper)" if z["keeper"] else ""}: {z["pts"]:.1f} pts'})
     curve = [(z["pick"], z["exp"]) for z in sorted(rows, key=lambda z: z["pick"])]
     n = len(rows)
     svg = render.scatter(pts, xmax=n + 1, ymax=ymax, ystep=30, rounds=(teams, (n + teams - 1) // teams), curve=curve,
@@ -98,7 +98,8 @@ def draft_chart(lg):
                    f'<td class="n team">{v:.0f}</td></tr>' for i, (t, v) in enumerate(sorted(tot.items(), key=lambda kv: -kv[1]), 1))
 
     def lst(title, items, cls):
-        li = "".join(f'<tr><td><b>{esc(z["player"])}</b> <span class="muted">{z["pos"] or ""} · {esc(z["team"])} · pick {z["pick"]}</span></td>'
+        li = "".join(f'<tr><td><b>{esc(z["player"])}</b>{"<span class=star title=keeper>★</span>" if z["keeper"] else ""} '
+                     f'<span class="muted">{z["pos"] or ""} · {esc(z["team"])} · pick {z["pick"]}</span></td>'
                      f'<td class="n team">{z["pts"]:.0f}</td><td class="n {cls}">{render.signed(z["value"], 0)}</td></tr>' for z in items)
         return f'<div class="panel"><h3 class="{cls}">{title}</h3><table>{li}</table></div>'
     rank = {t: i for i, (t, _) in enumerate(sorted(tot.items(), key=lambda kv: -kv[1]), 1)}
@@ -113,7 +114,8 @@ def draft_chart(lg):
             f'<div class="grid2" style="margin-top:14px">{lst("Biggest steals", best, "pos")}{lst("Biggest busts (rounds 1–4)", busts, "neg")}</div>'
             f'<h3 style="margin-top:18px">Draft haul: total points from each team’s picks</h3><div class="panel scroll"><table>{haul}</table></div>'
             '<p class="note">Points are each drafted player’s fantasy points in this league’s scoring this season, wherever they ended up. '
-            'The dashed line is the typical score for that draft slot (median of picks within 15 spots); steals and busts are measured against it.</p>')
+            'The dashed line is the typical score for that draft slot (median of picks within 15 spots); steals and busts are measured against it. '
+            '★ = keeper: kept from last season using that round’s pick rather than chosen in this year’s draft.</p>')
 
 
 def boom_bust_chart(lg):

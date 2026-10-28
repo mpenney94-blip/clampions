@@ -84,6 +84,10 @@ svg.hl-on [class^="ring-"].sel{opacity:1}
 .grid-t td.w{text-align:center;min-width:44px;font-weight:700;border:2px solid var(--surface);padding:6px 4px}
 .grid-t tr.tot td.n{text-align:center}
 .grid-t tr.tot td{font-weight:700;border-top:2px solid var(--rule);border-bottom:0;white-space:nowrap}
+.grid-t td.kept{outline:2.5px solid var(--ink);outline-offset:-3px}
+.star{color:var(--c4);margin-left:3px;font-size:.9em}
+svg text.star{fill:var(--c4);font-size:12px;paint-order:stroke;stroke:var(--surface);stroke-width:3px}
+svg.hl-on text.star{opacity:.15}svg.hl-on text.star.sel{opacity:1}
 .grid-t td.bn{color:var(--ink3);font-weight:400;font-style:italic}
 .tipwrap{position:relative;padding:8px 0;cursor:help;outline:none}
 .tipwrap:hover .track>span,.tipwrap:focus .track>span{background:var(--a)}
@@ -305,6 +309,8 @@ def scatter(points, *, xmax, ymax, ystep, xlabel, ylabel, xfmt=str, xreverse=Fal
         s.append(f'<circle class="dot" cx="{cx:.1f}" cy="{cy:.1f}" r="{p["r"]:.1f}"{fill}{g}><title>{esc(p.get("title", ""))}</title></circle>')
         if p.get("ring"):
             s.append(f'<circle class="ring-{p["ring"]}" cx="{cx:.1f}" cy="{cy:.1f}" r="{p["r"] + 3:.1f}"{g}/>')
+        if p.get("star"):
+            s.append(f'<text class="star" x="{cx + p["r"] + 1:.1f}" y="{cy - p["r"] + 1:.1f}"{g}>★</text>')
 
     def hits(box, pts):
         x0, y0, x1, y1 = box
@@ -502,12 +508,19 @@ def round_table(src, rounds):
             step = max(1, min(7, round(7 * v / mx)))
             fg = "#fff" if step >= 5 else "var(--ink)"
             who = ", ".join(f"{n} {p:.1f}" for n, p in r["round_players"][i].most_common())
-            cells.append(f'<td class="w" style="background:var(--r{step});color:{fg}" title="{esc(who)}">{v:.0f}</td>')
-        trs.append(f'<tr><td class="team" style="white-space:nowrap">{esc(r["team"])}</td>{"".join(cells)}<td class="n team">{r["draft"]:.0f}</td></tr>')
-    return (f'<div class="panel scroll"><table class="grid-t"><thead><tr><th>Team</th>{head}<th class="n">Total</th></tr></thead>'
+            kept = r["keeper_round"] == i
+            if kept:
+                who = "Keeper: " + who
+            badge = '<span class="star" aria-label="keeper">★</span>' if kept else ""
+            cells.append(f'<td class="w{" kept" if kept else ""}" style="background:var(--r{step});color:{fg}" title="{esc(who)}">{v:.0f}{badge}</td>')
+        trs.append(f'<tr><td class="team" style="white-space:nowrap">{esc(r["team"])}</td>{"".join(cells)}'
+                   f'<td class="n">{r["keeper"]:.0f}</td><td class="n">{r["draft"] - r["keeper"]:.0f}</td><td class="n team">{r["draft"]:.0f}</td></tr>')
+    return (f'<div class="panel scroll"><table class="grid-t"><thead><tr><th>Team</th>{head}<th class="n">Keeper</th><th class="n">New picks</th>'
+            f'<th class="n">Total</th></tr></thead>'
             f'<tbody>{"".join(trs)}</tbody></table></div>'
             '<p class="note">Starting-lineup points from each team’s own draft picks, by the round they were taken. Darker = more points; '
-            'hover a cell to see the players. Picks that were traded away, dropped or never started count as –.</p>')
+            'hover a cell to see the players. Outlined cells with a ★ are each team’s keeper, taken in that round’s slot; '
+            '“New picks” is everything else from this year’s draft. Picks that were traded away, dropped or never started count as –.</p>')
 
 
 def team_grids(lg_name, grids, weeks, totals):
