@@ -270,6 +270,48 @@ def week_totals(lg, r):
     return out
 
 
+def sources(lg):
+    """Starting-lineup points per team split by how the player got there: draft (and which round), waiver/free agent, or trade."""
+    events = collections.defaultdict(list)  # (roster, player) -> [(effective week, time, kind, round)]
+    for p in lg.picks:
+        events[(p["roster_id"], p["player_id"])].append((0, 0, "draft", p["round"]))
+    for t in lg.transactions:
+        if t["status"] != "complete" or t["type"] not in ("waiver", "free_agent", "trade"):
+            continue
+        kind = "trade" if t["type"] == "trade" else "waiver"
+        eff = t["leg"] if t["type"] == "waiver" else lg.first_week_after(t["status_updated"] / 1000)
+        for pid, r in (t.get("adds") or {}).items():
+            events[(r, pid)].append((eff, t["status_updated"], kind, None))
+    out = {}
+    for r, name in lg.team.items():
+        row = {"team": name, "draft": 0.0, "waiver": 0.0, "trade": 0.0, "rounds": collections.Counter(),
+               "round_players": collections.defaultdict(collections.Counter),
+               "players": collections.defaultdict(lambda: [0.0, None, None])}
+        for w in lg.weeks:
+            m = next(m for m in lg.matchups[w] if m["roster_id"] == r)
+            for pid, v in zip(m["starters"], m["starters_points"]):
+                if pid == "0":
+                    continue
+                ev = [e for e in events.get((r, pid), []) if e[0] <= w] or events.get((r, pid), [])
+                kind, rnd = (max(ev)[2], max(ev)[3]) if ev else ("waiver", None)
+                row[kind] += v
+                if kind == "draft":
+                    row["rounds"][rnd] += v
+                    row["round_players"][rnd][lg.name_of(pid)] += v
+                pl = row["players"][pid]
+                pl[0] += v
+                pl[1], pl[2] = kind, rnd
+        row["total"] = row["draft"] + row["waiver"] + row["trade"]
+        best = {}
+        for pid, (v, kind, _) in row["players"].items():
+            if kind and (kind not in best or v > best[kind][1]):
+                best[kind] = (lg.name_of(pid), v)
+        row["best"] = best
+        del row["players"]
+        out[name] = row
+    return out
+
+
 def trades(lg):
     out = []
     for t in sorted((t for t in lg.transactions if t["type"] == "trade" and t["status"] == "complete"), key=lambda t: t["status_updated"]):

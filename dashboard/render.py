@@ -466,6 +466,50 @@ def carry_bars(rows):
             'Teams are sorted by how much of their scoring came from a single player.</p>')
 
 
+def source_bars(src):
+    kinds = [("draft", "Drafted", 1), ("waiver", "Waiver / free agent", 2), ("trade", "Trade", 3)]
+    legend = '<div class="legend">' + "".join(f'<span><i style="background:var(--c{c})"></i>{lab}</span>' for _, lab, c in kinds) + '</div>'
+    trs = []
+    for r in sorted(src.values(), key=lambda r: -r["waiver"] / (r["total"] or 1)):
+        segs = []
+        for k, lab, c in kinds:
+            share = r[k] / (r["total"] or 1)
+            if share > 0:
+                segs.append(f'<span style="flex:{share:.4f};background:var(--c{c})" title="{lab}: {r[k]:.1f} pts ({share:.0%})">'
+                            f'{f"{share:.0%}" if share >= .08 else ""}</span>')
+        best = r["best"].get("waiver")
+        trs.append(f'<tr><td class="team">{esc(r["team"])}</td><td style="width:42%"><div class="stack">{"".join(segs)}</div></td>'
+                   f'<td class="n">{r["draft"]:.1f}</td><td class="n">{r["waiver"]:.1f}</td><td class="n">{r["trade"]:.1f}</td>'
+                   f'<td>{esc(best[0]) + f" <span class=muted>{best[1]:.1f}</span>" if best else "<span class=muted>—</span>"}</td></tr>')
+    return (f'<div class="panel scroll">{legend}<table><thead><tr><th>Team</th><th>Share of starting-lineup points</th><th class="n">Drafted</th>'
+            f'<th class="n">Waiver/FA</th><th class="n">Trade</th><th>Best pickup</th></tr></thead><tbody>{"".join(trs)}</tbody></table></div>'
+            '<p class="note">Starting-lineup points only, credited to how that team got the player at the time: drafted it, picked it up '
+            '(waiver claim or free agent) or traded for it. A drafted player who was dropped and picked back up counts as a pickup. '
+            'Teams are sorted by how much they’ve leaned on pickups.</p>')
+
+
+def round_table(src, rounds):
+    mx = max((v for r in src.values() for v in r["rounds"].values()), default=1) or 1
+    head = "".join(f'<th class="n">R{i}</th>' for i in range(1, rounds + 1))
+    trs = []
+    for r in sorted(src.values(), key=lambda r: -r["draft"]):
+        cells = []
+        for i in range(1, rounds + 1):
+            v = r["rounds"].get(i, 0)
+            if v <= 0:
+                cells.append('<td class="w muted">–</td>')
+                continue
+            step = max(1, min(7, round(7 * v / mx)))
+            fg = "#fff" if step >= 5 else "var(--ink)"
+            who = ", ".join(f"{n} {p:.1f}" for n, p in r["round_players"][i].most_common())
+            cells.append(f'<td class="w" style="background:var(--r{step});color:{fg}" title="{esc(who)}">{v:.0f}</td>')
+        trs.append(f'<tr><td class="team" style="white-space:nowrap">{esc(r["team"])}</td>{"".join(cells)}<td class="n team">{r["draft"]:.0f}</td></tr>')
+    return (f'<div class="panel scroll"><table class="grid-t"><thead><tr><th>Team</th>{head}<th class="n">Total</th></tr></thead>'
+            f'<tbody>{"".join(trs)}</tbody></table></div>'
+            '<p class="note">Starting-lineup points from each team’s own draft picks, by the round they were taken. Darker = more points; '
+            'hover a cell to see the players. Picks that were traded away, dropped or never started count as –.</p>')
+
+
 def team_grids(lg_name, grids, weeks, totals):
     """grids: {team: rows from stats.team_grid}; totals: {team: stats.week_totals}. One table per team behind a team picker."""
     teams = sorted(grids, key=str.lower)

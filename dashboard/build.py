@@ -163,6 +163,7 @@ def build(league_id, out, with_winprob=True):
     rid = {v: k for k, v in lg.team.items()}
     grid = stats.schedule_swap(lg, [rid[t] for t in order])
     wp_cache = {}
+    src = stats.sources(lg)
     week_links = " ".join(f'<a href="weeks/{w}.html">Week {w}</a>' for w in reversed(lg.weeks))
 
     sections = [
@@ -179,6 +180,8 @@ def build(league_id, out, with_winprob=True):
          + render.waiver_wars(*stats.waiver_wars(lg), sorted(lg.team.values(), key=str.lower))),
         ("trades", "Trade scorecard", render.trade_cards(stats.trades(lg))),
         ("carry", "Who carried each team", render.carry_bars(stats.carry(lg))),
+        ("sources", "Drafted vs. picked up", render.source_bars(src)),
+        ("rounds", "Points by draft round", render.round_table(src, max((p["round"] for p in lg.picks), default=0))),
         ("boom-bust", "Boom or bust", boom_bust_chart(lg)),
         ("team-grid", "Team by week", '<p class="lede">Every player on a team’s roster, week by week: what he scored and whether he was in the lineup.</p>'
          + render.team_grids(lg.name, {n: stats.team_grid(lg, r) for r, n in lg.team.items()}, lg.weeks,
