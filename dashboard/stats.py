@@ -51,6 +51,8 @@ class League:
 
     # ---- helpers
     def name_of(self, pid):
+        if pid.isalpha():
+            return f"{pid} D/ST"
         return (self.players.get(pid) or {}).get("full_name") or pid
 
     def pos_of(self, pid):

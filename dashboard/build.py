@@ -38,6 +38,8 @@ def pickups_chart(lg):
     xmax = max(10, (int(max(a["bid"] for a in adds)) // 10 + 1) * 10)
     top = sorted(adds, key=lambda a: -(a["ppg"] * min(a["games"], 4) - a["bid"] * 0.15))[:9]
     pricey = sorted(adds, key=lambda a: -a["bid"])[:3]
+    groups = sorted(lg.team.values(), key=str.lower)
+    gi = {t: i for i, t in enumerate(groups)}
     pts = []
     for a in adds:
         lab = a in top or a in pricey
@@ -45,12 +47,22 @@ def pickups_chart(lg):
         pts.append({"x": a["bid"], "y": a["ppg"], "r": 3 + 1.3 * min(g, 8), "jitter": random.uniform(-4, 4) if a["bid"] <= 1 else 0,
                     "z": -g, "label": a["player"] if lab else None,
                     "sub": f'{a["team"]} · ${a["bid"]} · {a["ppg"]:.1f}/gm · {g} {"game" if g == 1 else "games"}',
-                    "priority": (2 if a in top else 1) * a["ppg"],
+                    "priority": (2 if a in top else 1) * a["ppg"], "group": gi[a["team"]], "glabel": a["player"],
+                    "gsub": f'${a["bid"]} · {a["ppg"]:.1f}/gm · {g} {"game" if g == 1 else "games"}',
                     "title": f'{a["player"]} ({a["team"]}): ${a["bid"]}, {a["ppg"]:.1f} pts/game over {g} games, {a["total"]:.1f} total'})
     svg = render.scatter(pts, xmax=xmax, ymax=ymax, ystep=5, xreverse=True, xticks=range(0, xmax + 1, 10), xfmt=lambda v: f"${v}",
                          xlabel="Waiver bid  ·  cheaper →", ylabel="Points per game on that roster",
-                         quadrants=[(xmax * .3, ymax * .92, "STEALS", "good"), (xmax * .82, ymax * .5, "PRICEY", "bad")])
-    return (f'<div class="panel scroll"><div style="min-width:680px">{svg}</div></div><p class="note">Every pickup that has played for the team that grabbed it. '
+                         quadrants=[(xmax * .3, ymax * .92, "STEALS", "good"), (xmax * .82, ymax * .5, "PRICEY", "bad")], groups=groups)
+    sums = {}
+    for t in groups:
+        mine = [a for a in adds if a["team"] == t]
+        if mine:
+            b = max(mine, key=lambda a: (a["ppg"] * min(a["games"], 4)))
+            sums[t] = (f'{len(mine)} {"pickup" if len(mine) == 1 else "pickups"} that played for them · ${sum(a["bid"] for a in mine)} in bids · '
+                       f'best: {b["player"]} ({b["ppg"]:.1f}/gm over {b["games"]})')
+        else:
+            sums[t] = "No pickups have played for them yet."
+    return (render.highlight_box(svg, groups, sums, "pickups") + '<p class="note">Every pickup that has played for the team that grabbed it. '
             'Points per game count weeks on that roster (bench included) when the player actually played. Bigger dots = more games, so the average means more. '
             'Free-agent adds count as $0. Hover a dot for details.</p>')
 
@@ -63,6 +75,8 @@ def draft_chart(lg):
     best = sorted(rows, key=lambda z: -z["value"])[:6]
     busts = sorted([z for z in rows if z["round"] <= 4], key=lambda z: z["value"])[:5]
     ymax = max(30, (int(max(z["pts"] for z in rows)) // 30 + 1) * 30)
+    groups = sorted(lg.team.values(), key=str.lower)
+    gi = {t: i for i, t in enumerate(groups)}
     pts = []
     for z in rows:
         good, bad = z in best, z in busts
@@ -70,11 +84,12 @@ def draft_chart(lg):
                     "ring": "good" if good else "bad" if bad else None,
                     "label": z["player"] if good or bad else None, "lab_color": "good" if good else "bad" if bad else None,
                     "sub": f'{z["team"]} · pick {z["pick"]} · {z["pts"]:.0f} pts', "priority": abs(z["value"]),
+                    "group": gi.get(z["team"]), "glabel": f'{z["player"]} {z["pts"]:.0f}', "gsub": "",
                     "title": f'{z["player"]} ({z["pos"]}), pick {z["pick"]} by {z["team"]}: {z["pts"]:.1f} pts'})
     curve = [(z["pick"], z["exp"]) for z in sorted(rows, key=lambda z: z["pick"])]
     n = len(rows)
     svg = render.scatter(pts, xmax=n + 1, ymax=ymax, ystep=30, rounds=(teams, (n + teams - 1) // teams), curve=curve,
-                         xlabel="Draft round (pick 1 → %d)" % n, ylabel="Fantasy points this season")
+                         xlabel="Draft round (pick 1 → %d)" % n, ylabel="Fantasy points this season", groups=groups)
     tot = {}
     for z in rows:
         tot[z["team"]] = tot.get(z["team"], 0) + z["pts"]
@@ -86,7 +101,15 @@ def draft_chart(lg):
         li = "".join(f'<tr><td><b>{esc(z["player"])}</b> <span class="muted">{z["pos"] or ""} · {esc(z["team"])} · pick {z["pick"]}</span></td>'
                      f'<td class="n team">{z["pts"]:.0f}</td><td class="n {cls}">{render.signed(z["value"], 0)}</td></tr>' for z in items)
         return f'<div class="panel"><h3 class="{cls}">{title}</h3><table>{li}</table></div>'
-    return (f'<div class="panel scroll"><div style="min-width:680px">{svg}</div></div>'
+    rank = {t: i for i, (t, _) in enumerate(sorted(tot.items(), key=lambda kv: -kv[1]), 1)}
+    sums = {}
+    for t in groups:
+        mine = [z for z in rows if z["team"] == t]
+        if mine:
+            b = max(mine, key=lambda z: z["value"])
+            sums[t] = (f'{len(mine)} picks · {tot[t]:.0f} pts (#{rank[t]} of {len(tot)}) · '
+                       f'best value: {b["player"]}, pick {b["pick"]} ({render.signed(b["value"], 0)} vs typical)')
+    return (render.highlight_box(svg, groups, sums, "draft picks") +
             f'<div class="grid2" style="margin-top:14px">{lst("Biggest steals", best, "pos")}{lst("Biggest busts (rounds 1–4)", busts, "neg")}</div>'
             f'<h3 style="margin-top:18px">Draft haul: total points from each team’s picks</h3><div class="panel scroll"><table>{haul}</table></div>'
             '<p class="note">Points are each drafted player’s fantasy points in this league’s scoring this season, wherever they ended up. '
@@ -124,7 +147,7 @@ def build(league_id, out, with_winprob=True):
     toc = '<nav class="toc">' + "".join(f'<a href="#{k}">{esc(t)}</a>' for k, t, _ in sections) + '<a href="#history">Past weeks</a></nav>'
     body = (f'<header class="site"><div><div class="eyebrow">{lg.season} season · through week {last}</div><h1>{esc(lg.name)}</h1></div></header>{toc}'
             + "".join(f'<section id="{k}"><h2>{esc(t)}</h2>{h}</section>' for k, t, h in sections)
-            + f'<section id="history"><h2>Past weeks</h2><div class="panel">{week_links}</div></section>' + render.footer(now))
+            + f'<section id="history"><h2>Past weeks</h2><div class="panel">{week_links}</div></section>' + render.footer(now) + render.HIGHLIGHT_JS)
     os.makedirs(os.path.join(out, "weeks"), exist_ok=True)
     with open(os.path.join(out, "index.html"), "w") as f:
         f.write(render.page(f"{lg.name} dashboard", body, f"{lg.name} {lg.season}: all-play standings, win probability, schedule swap, bench, waivers, trades and draft."))
