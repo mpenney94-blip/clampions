@@ -25,8 +25,9 @@ class League:
         self.slots = [s for s in self.info["roster_positions"] if s not in ("BN", "IR", "TAXI")]
         self.weeks = list(range(self.info["settings"].get("start_week", 1), self.info["settings"].get("last_scored_leg", 0) + 1))
         users = {u["user_id"]: u for u in c.league_users(league_id)}
-        self.team = {}
+        self.team, self.roster_now = {}, {}
         for r in c.rosters(league_id):
+            self.roster_now[r["roster_id"]] = set(r.get("players") or [])
             u = users.get(r["owner_id"]) or {}
             self.team[r["roster_id"]] = (u.get("metadata") or {}).get("team_name") or u.get("display_name") or f"Team {r['roster_id']}"
         self.players = c.players()
@@ -320,6 +321,19 @@ def sources(lg):
     return out
 
 
+def _departure(lg, r, pid):
+    """How a player left roster r and where he is now, e.g. 'traded to X, wk 7' or 'dropped wk 1 · now on Y'."""
+    left = None
+    for t in sorted(lg.transactions, key=lambda t: t["status_updated"]):
+        if t["status"] == "complete" and (t.get("drops") or {}).get(pid) == r:
+            left = t
+    now = next((lg.team[o] for o, ps in lg.roster_now.items() if pid in ps), None)
+    if left and left["type"] == "trade" and pid in (left.get("adds") or {}):
+        return f"traded to {lg.team[left['adds'][pid]]}, wk {min(left['leg'], lg.weeks[-1])}" + (f" · now on {now}" if now and now != lg.team[left['adds'][pid]] else "")
+    wk = f" wk {min(left['leg'], lg.weeks[-1])}" if left else ""
+    return f"dropped{wk} · " + (f"now on {now}" if now else "free agent")
+
+
 def _pick_note(lg, r, pid):
     """Why a draft pick has no starting-lineup points for the team that drafted him."""
     name = lg.name_of(pid)
@@ -367,7 +381,9 @@ def draft(lg, window=15):
     rows = []
     for p in lg.picks:
         pid = p["player_id"]
+        gone = pid not in lg.roster_now.get(p["roster_id"], set())
         rows.append({"pick": p["pick_no"], "round": p["round"], "player": lg.name_of(pid), "keeper": bool(p.get("is_keeper")),
+                     "gone": _departure(lg, p["roster_id"], pid) if gone else None,
                      "pos": lg.pos_of(pid) or (p.get("metadata") or {}).get("position"),
                      "team": lg.team.get(p["roster_id"], "?"), "pts": sum(lg.pts.get(pid, {}).get(w, 0) for w in lg.weeks)})
     for x in rows:
