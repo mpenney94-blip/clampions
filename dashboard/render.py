@@ -182,6 +182,47 @@ def trade_cards(trades):
             'counting from the first week whose games started after it.</p>')
 
 
+def waiver_wars(claims, per_team, teams):
+    if not claims:
+        return '<div class="panel muted">No contested waiver claims yet.</div>'
+    most = max(claims, key=lambda c: (len(c["losers"]), c["since"]))
+    big = max(claims, key=lambda c: c["since"])
+    ties = [c for c in claims if c["losers"][0]["bid"] == c["win_bid"]]
+    def bids(c):
+        return ", ".join(f'{esc(x["team"])} ${x["bid"]}' for x in c["losers"])
+    tiles = ('<div class="tiles">'
+             f'<div class="panel tile"><div class="k">Most contested</div><div class="v">{len(most["losers"]) + 1} teams</div>'
+             f'<div class="s">{esc(most["player"])}, Week {most["week"]}: {esc(most["winner"])} won at ${most["win_bid"]}</div></div>'
+             f'<div class="panel tile"><div class="k">Biggest one that got away</div><div class="v">{big["since"]:.1f} pts</div>'
+             f'<div class="s">{esc(big["player"])}: {bids(big)} lost to {esc(big["winner"])} ${big["win_bid"]}</div></div>'
+             f'<div class="panel tile"><div class="k">Lost on a tie</div><div class="v">{len(ties)}</div>'
+             f'<div class="s">{"Same bid as the winner, lost on waiver order" + (": " + ", ".join(esc(c["player"]) for c in ties[:3]) if ties else "")}</div></div>'
+             '</div>')
+    rows = "".join(f'<tr><td class="muted">{c["week"]}</td><td><b>{esc(c["player"])}</b> <span class="muted">{c["pos"] or ""}</span></td>'
+                   f'<td>{esc(c["winner"])} <b>${c["win_bid"]}</b></td><td class="muted">{bids(c)}</td>'
+                   f'<td class="n team">{c["since"]:.1f}</td></tr>' for c in claims)
+    claims_tbl = ('<h3 style="margin-top:18px">Every contested claim</h3><div class="panel scroll"><table><thead><tr><th>Wk</th><th>Player</th>'
+                  f'<th>Won by</th><th>Lost by</th><th class="n">Pts since</th></tr></thead><tbody>{rows}</tbody></table></div>')
+    mx = max((v["missed"] for v in per_team.values()), default=1) or 1
+    trs = []
+    for t in sorted(teams, key=lambda t: -per_team.get(t, {}).get("missed", 0)):
+        v = per_team.get(t)
+        if not v:
+            trs.append(f'<tr><td class="team">{esc(t)}</td><td class="barcell"><div class="track"></div></td><td class="n muted">0</td><td class="n muted">0.0</td><td class="muted">Never outbid</td></tr>')
+            continue
+        b = v["best"]
+        trs.append(f'<tr><td class="team">{esc(t)}</td><td class="barcell"><div class="track"><span style="width:{100 * v["missed"] / mx:.1f}%"></span></div></td>'
+                   f'<td class="n">{v["lost"]}</td><td class="n team">{v["missed"]:.1f}</td><td>{esc(b["player"])} <span class="muted">{b["since"]:.1f} pts</span></td></tr>')
+    team_tbl = ('<h3 style="margin-top:18px">Points that got away, by team</h3><div class="panel scroll"><table><thead><tr><th>Team</th>'
+                '<th class="barcell">Points missed</th><th class="n">Lost claims</th><th class="n">Pts</th><th>Biggest miss</th></tr></thead>'
+                f'<tbody>{"".join(trs)}</tbody></table></div>')
+    return (tiles + team_tbl + claims_tbl +
+            '<p class="note">A contested claim is a waiver run where more than one team put in a claim for the same player. '
+            '“Points since” and “points missed” are everything that player has scored from that week on, wherever he played, '
+            'so they’re the most the losing teams could have gotten, not what they’d actually have started. '
+            'Sleeper doesn’t share trade offers that weren’t accepted, so only waivers show up here.</p>')
+
+
 def recap_tiles(rc):
     c, b = rc["closest"], rc["blowout"]
     def g(x):

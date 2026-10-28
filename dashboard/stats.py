@@ -44,7 +44,7 @@ class League:
                     self.pts[pid][w] = v
         self.transactions = []
         for w in self.weeks + [self.weeks[-1] + 1] if self.weeks else []:
-            self.transactions += [dict(t, leg=w) for t in c.transactions(league_id, w) if t["status"] == "complete"]
+            self.transactions += [dict(t, leg=w) for t in c.transactions(league_id, w)]  # includes failed waiver claims
         drafts = c.league_drafts(league_id)
         self.picks = c.draft_picks(drafts[0]["draft_id"]) if drafts else []
         self._kickoffs = {}
@@ -161,7 +161,7 @@ def pickups(lg):
               for w in lg.weeks for m in lg.matchups[w]}
     seen, out = set(), []
     for t in sorted(lg.transactions, key=lambda t: t["status_updated"]):
-        if t["type"] not in ("waiver", "free_agent"):
+        if t["type"] not in ("waiver", "free_agent") or t["status"] != "complete":
             continue
         for pid, r in (t.get("adds") or {}).items():
             if (r, pid) in seen or lg.pos_of(pid) not in POSITIONS:
@@ -177,9 +177,40 @@ def pickups(lg):
     return out
 
 
+def waiver_wars(lg):
+    """Waiver claims more than one team made for the same player, and what the losers missed."""
+    runs = collections.defaultdict(list)  # (player, waiver run time) -> every claim on him in that run
+    for t in lg.transactions:
+        if t["type"] == "waiver" and t.get("adds"):
+            for pid in t["adds"]:
+                runs[(pid, t["status_updated"] // 60000)].append(t)
+    out = []
+    for (pid, _), ts in runs.items():
+        losers = [{"team": lg.team[t["adds"][pid]], "bid": (t.get("settings") or {}).get("waiver_bid", 0)} for t in ts
+                  if t["status"] == "failed" and "claimed by another" in ((t.get("metadata") or {}).get("notes") or "")]
+        win = next((t for t in ts if t["status"] == "complete"), None)
+        if not losers or not win:
+            continue
+        leg = win["leg"]  # claims made earlier in the week can carry an earlier leg; the run counts from the winner's
+        weeks = [w for w in lg.weeks if w >= leg and w in lg.pts.get(pid, {})]
+        out.append({"player": lg.name_of(pid), "pos": lg.pos_of(pid), "week": leg,
+                    "winner": lg.team[win["adds"][pid]], "win_bid": (win.get("settings") or {}).get("waiver_bid", 0),
+                    "losers": sorted(losers, key=lambda x: -x["bid"]), "since": sum(lg.pts[pid][w] for w in weeks), "games": len(weeks)})
+    out.sort(key=lambda x: -x["since"])
+    per_team = collections.defaultdict(lambda: {"lost": 0, "missed": 0.0, "best": None})
+    for c in out:
+        for lo in {x["team"]: x for x in c["losers"]}.values():
+            t = per_team[lo["team"]]
+            t["lost"] += 1
+            t["missed"] += c["since"]
+            if not t["best"] or c["since"] > t["best"]["since"]:
+                t["best"] = c
+    return out, dict(per_team)
+
+
 def trades(lg):
     out = []
-    for t in sorted((t for t in lg.transactions if t["type"] == "trade"), key=lambda t: t["status_updated"]):
+    for t in sorted((t for t in lg.transactions if t["type"] == "trade" and t["status"] == "complete"), key=lambda t: t["status_updated"]):
         eff = lg.first_week_after(t["status_updated"] / 1000)
         weeks = [w for w in lg.weeks if w >= eff]
         sides = []
