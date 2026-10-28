@@ -233,6 +233,41 @@ def waiver_wars(lg):
     return out, dict(per_team)
 
 
+def waiver_bids(lg):
+    """Every team's waiver claims: how many bids, how many won, and how far each win was over the next-highest bid
+    (the whole bid when nobody else claimed him, since the league minimum is $0)."""
+    floor = lg.info["settings"].get("waiver_bid_min", 0)
+    runs = collections.defaultdict(list)
+    for t in lg.transactions:
+        if t["type"] == "waiver" and t.get("adds"):
+            for pid in t["adds"]:
+                runs[(pid, t["status_updated"] // 60000)].append(t)
+    out = {r: {"team": n, "bids": 0, "won": 0, "spent": 0, "over": 0, "claims": []} for r, n in lg.team.items()}
+    for (pid, _), ts in runs.items():
+        bid = lambda t: (t.get("settings") or {}).get("waiver_bid", 0)
+        win = next((t for t in ts if t["status"] == "complete"), None)
+        for t in ts:
+            r = t["adds"][pid]
+            others = [bid(o) for o in ts if o is not t and o["adds"][pid] != r]
+            note = (t.get("metadata") or {}).get("notes") or ""
+            c = {"week": t["leg"], "player": lg.name_of(pid), "pos": lg.pos_of(pid), "bid": bid(t), "won": t["status"] == "complete",
+                 "next": max(others, default=None), "dropped": [lg.name_of(d) for d in (t.get("drops") or {})], "over": 0}
+            if c["won"]:
+                c["over"] = bid(t) - max(others + [floor])
+                out[r]["won"] += 1
+                out[r]["spent"] += bid(t)
+                out[r]["over"] += c["over"]
+            elif win is not None and "claimed by another" in note:
+                c["why"] = f'{lg.team[win["adds"][pid]]} won at ${bid(win)}'
+            else:
+                c["why"] = "roster would have been too full" if "too many players" in note else (note.rstrip(".") or "failed")
+            out[r]["bids"] += 1
+            out[r]["claims"].append(c)
+    for x in out.values():
+        x["claims"].sort(key=lambda c: (c["week"], -c["bid"]))
+    return sorted(out.values(), key=lambda x: -x["over"])
+
+
 def carry(lg):
     """Where each team's starting-lineup points came from, by position and by player."""
     out = []

@@ -1007,3 +1007,48 @@ def injury_table(rows, min_ppg=8):
             '(injury, illness, inactive or suspension), costing his season average. <b>Left hurt</b>: ESPN’s play-by-play logged him '
             '“injured during the play” and he never showed up in a play again or got a “returned to the game” note; the cost is his season average '
             'minus what he’d scored when he went down. <b>Dead starts</b>: players left in the lineup who didn’t play at all (on bye or out). <b>Dropped hurt</b>: players averaging 5+ a game the team cut who are still listed injured (IR, PUP, out or doubtful) and haven’t played since; Sleeper doesn’t say whether an injury is season-ending, so the listed status and injury are shown instead. Click a team for the players.</p>')
+
+
+def overbid_table(rows, budget=100):
+    mx = max(x["spent"] for x in rows) or 1
+
+    def cells(x):
+        need = x["spent"] - x["over"]
+        rate = f'{x["won"] / x["bids"]:.0%}' if x["bids"] else "—"
+        return (f'<td class="barcell"><div class="stack" style="height:12px;min-width:120px;background:var(--grid)">'
+                f'<span data-pos="need" style="flex:{need / mx:.4f};background:var(--c1)" title="Needed to win: ${need}"></span>'
+                f'<span data-pos="over" style="flex:{x["over"] / mx:.4f};background:var(--bad)" title="Overbid: ${x["over"]}"></span>'
+                f'<span style="flex:{max(0, 1 - x["spent"] / mx):.4f};background:transparent"></span></div></td>'
+                f'<td class="n team">${x["over"]}</td><td class="n">${x["spent"]}</td><td class="n">{x["bids"]}</td><td class="n">{x["won"]}</td>'
+                f'<td class="n muted">{rate}</td>')
+
+    def detail(x):
+        if not x["claims"]:
+            return '<span class="muted">No waiver claims yet</span>'
+        trs = []
+        for c in x["claims"]:
+            if c["won"]:
+                vs = f'next bid ${c["next"]}' if c["next"] is not None else "uncontested"
+                res = (f'<span class="pos">Won</span> <span class="muted">· {vs}</span>'
+                       + (f' · <span class="neg">${c["over"]} over</span>' if c["over"] else ""))
+            else:
+                res = f'<span class="muted">Lost · {esc(c["why"])}</span>'
+            drop = f'<span class="muted">dropped {esc(", ".join(c["dropped"]))}</span>' if c["dropped"] and c["won"] else ""
+            trs.append(f'<tr><td class="muted">Wk {c["week"]}</td><td><b>{esc(c["player"])}</b> <span class="muted">{c["pos"] or ""}</span></td>'
+                       f'<td class="n team">${c["bid"]}</td><td>{res}</td><td>{drop}</td></tr>')
+        return f'<table class="picks">{"".join(trs)}</table>'
+    legend = ('<div class="legend"><span><i style="background:var(--c1)"></i>Needed to win</span>'
+              '<span><i style="background:var(--bad)"></i>Overbid</span></div>')
+    controls = _sort_controls("overbids", [("over", "Overbid $", "Most money left on the table first"),
+                                           ("spent", "Spent $", "Biggest spenders first"),
+                                           ("bids", "Total bids", "Most claims put in first"),
+                                           ("won", "Successful bids", "Most claims won first"),
+                                           ("rate", "Win rate", "Highest share of claims won first")])
+    data = lambda x: {"over": x["over"] + x["spent"] / 1e4, "spent": x["spent"] + x["over"] / 1e4, "bids": x["bids"] + x["won"] / 100,
+                      "won": x["won"] + x["bids"] / 100, "rate": (x["won"] / x["bids"] if x["bids"] else -1) + x["bids"] / 1e4, "need": 0}
+    return (f'<div class="panel scroll sortbars">{controls}{legend}<table class="expand"><thead><tr><th></th><th>Team</th><th class="barcell">FAAB spent on wins</th>'
+            f'<th class="n">Overbid</th><th class="n">Spent</th><th class="n">Bids</th><th class="n">Won</th><th class="n">Win %</th></tr></thead>'
+            f'<tbody>{_xrows("ob", rows, cells, detail, 8, data)}</tbody></table></div>'
+            f'<p class="note">Overbid is how much a winning claim beat the next-highest bid on the same player by; when nobody else put in a claim, '
+            f'the whole bid counts, since the minimum bid is $0. Ties won on waiver priority count as $0 over. Bids count every waiver claim, '
+            f'including ones that lost or failed because the roster would have been too full. Budget is ${budget}. Click a team for every claim.</p>')

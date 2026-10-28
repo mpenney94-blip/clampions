@@ -235,6 +235,8 @@ def build(league_id, out, with_winprob=True):
         ("waivers", "Waiver wire", pickups_chart(lg)),
         ("waiver-wars", "Waiver wars", '<p class="lede">Players more than one team put in a claim for, who won them, and what the losing bidders missed out on.</p>'
          + render.waiver_wars(*stats.waiver_wars(lg), sorted(lg.team.values(), key=str.lower))),
+        ("overbids", "Waiver overbids", '<p class="lede">How much FAAB each team spent beyond what it took to win, and how often its claims came through.</p>'
+         + render.overbid_table(stats.waiver_bids(lg), lg.info["settings"].get("waiver_budget", 100))),
         ("trades", "Trade scorecard", render.trade_cards(stats.trades(lg))),
         ("carry", "Who carried each team", render.carry_bars(stats.carry(lg))),
         ("sources", "Drafted vs. picked up", render.source_bars(src)),
