@@ -261,6 +261,15 @@ def team_grid(lg, r):
     return sorted(out, key=lambda x: (-x["started"], -x["benched"]))
 
 
+def week_totals(lg, r):
+    """{week: (starting-lineup score, best possible lineup score)} for roster r."""
+    out = {}
+    for w in lg.weeks:
+        m = next(m for m in lg.matchups[w] if m["roster_id"] == r)
+        out[w] = (m["points"] or 0.0, _optimal(lg, m.get("players_points") or {})[0])
+    return out
+
+
 def trades(lg):
     out = []
     for t in sorted((t for t in lg.transactions if t["type"] == "trade" and t["status"] == "complete"), key=lambda t: t["status_updated"]):
