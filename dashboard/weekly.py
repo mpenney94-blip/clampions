@@ -334,9 +334,29 @@ def _matches(lg, p, token):
     return norm(info.get("last_name") or "") == norm(last) and (info.get("first_name") or "").lower().startswith(first.lower())
 
 
+HURT = {"IR": "injured reserve", "Out": "out", "PUP": "PUP list", "Doubtful": "doubtful"}
+
+
+def dropped_hurt(lg, r, ppg, min_ppg=5.0):
+    """Players team r cut who are still hurt and haven't played a down since."""
+    out = {}
+    for t in sorted(lg.transactions, key=lambda t: t["status_updated"]):
+        if t["status"] != "complete":
+            continue
+        for p, rr in (t.get("drops") or {}).items():
+            info = lg.players.get(p) or {}
+            if (rr != r or p in lg.roster_now.get(r, ()) or ppg.get(p, 0) < min_ppg or info.get("injury_status") not in HURT
+                    or any(p in lg.played[w] for w in lg.weeks if w >= t["leg"])):
+                continue
+            now = next((lg.team[o] for o, ps in lg.roster_now.items() if p in ps), None)
+            out[p] = {"week": t["leg"], "player": lg.name_of(p), "pos": lg.pos_of(p), "ppg": ppg[p],
+                      "status": HURT[info["injury_status"]], "injury": info.get("injury_body_part"), "now": now}
+    return sorted(out.values(), key=lambda x: x["week"])
+
+
 def injuries(lg, min_ppg=8.0):
     """Points lost to injury: games missed while the player's NFL team played, and games he left hurt and never returned to,
-    plus starts wasted on players who didn't play at all."""
+    plus starts wasted on players who didn't play at all and injured players the team cut."""
     ppg = _ppg(lg)
     exits = {w: injury_exits(lg, w) for w in lg.weeks}
     out = []
@@ -348,12 +368,12 @@ def injuries(lg, min_ppg=8.0):
                 v, team = ppg.get(p, 0), _nfl_team(lg, p, w)
                 if p not in lg.played[w]:
                     if p in m["starters"] and p != "0":
-                        dead.append((w, lg.name_of(p)))
+                        dead.append((w, lg.name_of(p), lg.pos_of(p), "bye" if team in lg.bye.get(w, set()) else "didn’t play"))
                     if v >= min_ppg and team not in lg.bye.get(w, set()):
                         missed.append((w, lg.name_of(p), v))
                 elif v >= min_ppg and not p.isalpha() and any(team in ts and _matches(lg, p, n) for n, ts in exits[w]):
                     got = lg.pts[p].get(w, 0)
                     left.append((w, lg.name_of(p), max(0.0, v - got), got, p in m["starters"]))
-        out.append({"team": name, "missed": missed, "left": left, "dead": dead,
+        out.append({"team": name, "missed": missed, "left": left, "dead": dead, "cut": dropped_hurt(lg, r, ppg),
                     "out": sum(x[2] for x in missed), "early": sum(x[2] for x in left)})
     return sorted(out, key=lambda x: -(x["out"] + x["early"]))

@@ -40,7 +40,7 @@ class League:
                                   + "".join(f"&position[]={p}" for p in POSITIONS))
             for r in rows:
                 s = r.get("stats") or {}
-                if s.get("gp") or s.get("gms_active") or r["player_id"].isalpha():
+                if s.get("gp") or r["player_id"].isalpha():  # gms_active is set for injured players who sat
                     self.pts[r["player_id"]][w] = round(winprob.score_stats(s, self.scoring), 2)
                     self.played[w].add(r["player_id"])
             for m in self.matchups[w]:  # Sleeper's own numbers win where we have them
