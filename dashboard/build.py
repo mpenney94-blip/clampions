@@ -10,7 +10,7 @@ import os
 import random
 
 import winprob
-from dashboard import render, stats, weekly
+from dashboard import commentary, render, stats, weekly
 from dashboard.render import esc
 
 
@@ -215,9 +215,12 @@ def build(league_id, out, with_winprob=True):
         "recap": (f"Week {last} recap", render.recap_tiles(stats.recap(lg, last))),
         "awards": (f"Week {last} awards", render.awards_tiles(weekly.awards(lg, last, wp_last), last)),
         "winprob": (f"Week {last} win probability", winprob_html) if with_winprob else None,
+        "column": ("The week in review", render.column(*commentary.write("recap", commentary.week_facts(lg, last, wp_last, po_now, po_prev)))),
         "power": ("Power rankings", render.power_table(weekly.power(lg), pw_prev)),
         "playoffs": ("Playoff odds", render.playoff_table(po_now, po_prev, lg.playoff_teams, div_names)) if more_games else None,
         "preview": (f"Week {lg.next_week} preview", render.preview_cards(weekly.preview(lg, lg.next_week), lg.next_week)) if more_games else None,
+        "lookahead": (f"Week {lg.next_week} trash talk", render.column(*commentary.write("preview", commentary.preview_facts(lg, lg.next_week, po_now))))
+        if more_games else None,
         "history": ("Past weeks", f'<div class="panel">{week_links}</div>'),
         "standings": ("All-play standings", '<p class="lede">How each team would stand if everyone played everyone every week, next to their real record.</p>' + render.allplay_table(ap, lg.weeks)),
         "trends": ("Scoring trends", render.trend_cards(tr_rows, tr_league, lg.weeks)),
@@ -245,7 +248,7 @@ def build(league_id, out, with_winprob=True):
     }
     groups = [
         ("this-week", "This week", f"What happened in week {last} and what’s coming next. These change every week.",
-         ["recap", "awards", "winprob", "power", "playoffs", "preview", "history"]),
+         ["recap", "awards", "column", "winprob", "power", "playoffs", "preview", "lookahead", "history"]),
         ("scoring", "Scoring", f"Weeks 1–{last}: how many points every team put up, how lucky it was, and where the points came from.",
          ["standings", "trends", "projections", "close", "schedule", "carry", "boom-bust", "team-grid"]),
         ("roster", "Roster", "Trades, byes, injuries, lineup calls and the waiver wire.",

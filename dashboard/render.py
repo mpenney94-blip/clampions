@@ -97,6 +97,8 @@ svg .lay,svg .lab,svg .sub,svg .lead,svg [class^="ring-"]{pointer-events:none}
 svg.hl-on text.star{opacity:.2}svg.hl-on text.star.sel{opacity:1}
 .grid-t .star{font-size:1.25em;vertical-align:-1px}
 .grid-t td.bn{color:var(--ink3);font-weight:400;font-style:italic}
+.column p{margin:0 0 12px;font-size:17px;line-height:1.55;max-width:72ch}.column p:last-child{margin-bottom:0}
+.column p:first-child::first-letter{font:700 2.6em/0.9 var(--display);float:left;margin:4px 8px 0 0;color:var(--a)}
 table.expand tr.xrow{cursor:pointer}
 table.expand tr.xrow:hover td{background:var(--grid)}
 table.expand tr.xrow:focus-visible{outline:2px solid var(--a);outline-offset:-2px}
@@ -1052,3 +1054,11 @@ def overbid_table(rows, budget=100):
             f'<p class="note">Overbid is how much a winning claim beat the next-highest bid on the same player by; when nobody else put in a claim, '
             f'the whole bid counts, since the minimum bid is $0. Ties won on waiver priority count as $0 over. Bids count every waiver claim, '
             f'including ones that lost or failed because the roster would have been too full. Budget is ${budget}. Click a team for every claim.</p>')
+
+
+def column(paras, by):
+    if not paras:
+        return '<div class="panel muted">Nothing to say this week. Enjoy it while it lasts.</div>'
+    who = ("Written by Claude from this week’s stats." if by == "Claude" else "Written by the dashboard from this week’s stats.")
+    return (f'<div class="panel column">{"".join(f"<p>{p}</p>" for p in paras)}</div>'
+            f'<p class="note">{who} All in good fun; complaints can be filed with your waiver wire.</p>')
