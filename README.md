@@ -35,3 +35,14 @@ Sleeper can't do write operations through the API (no lineup changes, trades or 
 ```sh
 python3 winprob.py <league_id> [--week N] [--out winprob.json]
 ```
+
+## League dashboard
+
+`dashboard/` builds a static website for a Sleeper league: weekly recap, all-play standings, play-by-play win probability, schedule swap, points left on the bench, waiver wire, trade scorecard, draft report card, and a page for every past week.
+
+```sh
+python3 -m dashboard.build <league_id> --out _site          # full build (about 2 minutes)
+python3 -m dashboard.build <league_id> --out _site --no-winprob   # quick build without win probability
+```
+
+`.github/workflows/dashboard.yml` rebuilds and publishes it to GitHub Pages every Tuesday and Thursday, on pushes that change the dashboard code, and on demand from the Actions tab ("Run workflow"). Change `LEAGUE_ID` in that file to point it at a different league.
