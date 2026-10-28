@@ -952,6 +952,13 @@ def bye_table(rows, min_ppg=8):
             'so it will move with trades and pickups. Click a team for the players.</p>')
 
 
+INJURY_NOTES = {"Josh Jacobs": "abuse"}  # league editor's notes on why a player was out
+
+
+def _inj_note(name):
+    return f' <span class="muted">*{esc(INJURY_NOTES[name])}</span>' if name in INJURY_NOTES else ""
+
+
 def injury_table(rows, min_ppg=8):
     mx = max(x["out"] + x["early"] for x in rows) or 1
 
@@ -966,7 +973,7 @@ def injury_table(rows, min_ppg=8):
                 f'<td class="n">{cut}</td>')
 
     def detail(x):
-        missed = _plist([(w, n, v, "") for w, n, v in x["missed"]], "No missed games")
+        missed = _plist([(w, n, v, _inj_note(n)) for w, n, v in x["missed"]], "No missed games")
         left = _plist([(w, n, v, f' <span class="muted">scored {got:.1f}{"" if st else " · bench"}</span>') for w, n, v, got, st in x["left"]],
                       "Nobody left a game hurt")
         dead = ('<table class="picks">' + "".join(f'<tr><td class="muted">Wk {w}</td><td><b>{esc(n)}</b> <span class="muted">{pos or ""}</span></td>'
