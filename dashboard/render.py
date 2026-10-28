@@ -68,6 +68,13 @@ svg .good{fill:var(--good)}svg .bad{fill:var(--bad)}
 svg .ring-good{fill:none;stroke:var(--good);stroke-width:2.5}svg .ring-bad{fill:none;stroke:var(--bad);stroke-width:2.5}
 svg .curve{fill:none;stroke:var(--ink3);stroke-width:2;stroke-dasharray:5 4}
 svg .lead{stroke:var(--ink3);stroke-width:1}
+.hl-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-bottom:8px}
+.hl-bar label{font-weight:600}
+.hl-bar select{font:inherit;padding:6px 10px;border:1px solid var(--rule);border-radius:8px;background:var(--surface);color:var(--ink);max-width:100%}
+.hl-bar select:focus-visible{outline:2px solid var(--a);outline-offset:2px}
+svg.hl-on .dot,svg.hl-on [class^="ring-"]{opacity:.15}
+svg.hl-on .dot.sel{opacity:1;fill:var(--a)!important;stroke-width:2}
+svg.hl-on [class^="ring-"].sel{opacity:1}
 footer{margin-top:56px;color:var(--ink3);font-size:14px;border-top:1px solid var(--rule);padding-top:16px}
 """
 
@@ -194,8 +201,11 @@ def _text_w(s, size):
 
 
 def scatter(points, *, xmax, ymax, ystep, xlabel, ylabel, xfmt=str, xreverse=False, xticks=None, rounds=None,
-            curve=None, quadrants=(), W=1040, H=560):
-    """points: dicts with x, y, r, cls ('dot'|'good'|'bad'), label, sub, ring ('good'|'bad'|None), title."""
+            curve=None, quadrants=(), groups=None, W=1040, H=560):
+    """points: dicts with x, y, r, cls ('dot'|'good'|'bad'), label, sub, ring ('good'|'bad'|None), title.
+
+    With groups (a list of names), each point may carry group (an index into it) plus glabel/gsub. Every group gets
+    its own hidden label layer naming all of its points, which highlight_box() shows when that group is picked."""
     l, r, t, b = 64, 24, 16, 56
     X = (lambda v: l + (W - l - r) * (xmax - v) / xmax) if xreverse else (lambda v: l + (W - l - r) * v / xmax)
     Y = lambda v: t + (H - t - b) * (1 - v / ymax)
@@ -224,17 +234,22 @@ def scatter(points, *, xmax, ymax, ystep, xlabel, ylabel, xfmt=str, xreverse=Fal
         p["_c"] = (cx, cy)
         dots.append((cx, cy, p["r"]))
         fill = {"dot": "", "a": ' style="fill:var(--a)"', "good": ' style="fill:var(--good)"', "bad": ' style="fill:var(--bad)"'}[p.get("cls", "dot")]
-        s.append(f'<circle class="dot" cx="{cx:.1f}" cy="{cy:.1f}" r="{p["r"]:.1f}"{fill}><title>{esc(p.get("title", ""))}</title></circle>')
+        g = f' data-g="{p["group"]}"' if p.get("group") is not None else ""
+        s.append(f'<circle class="dot" cx="{cx:.1f}" cy="{cy:.1f}" r="{p["r"]:.1f}"{fill}{g}><title>{esc(p.get("title", ""))}</title></circle>')
         if p.get("ring"):
-            s.append(f'<circle class="ring-{p["ring"]}" cx="{cx:.1f}" cy="{cy:.1f}" r="{p["r"] + 3:.1f}"/>')
-
-    marked = [p["_c"] + (p["r"] + 4,) for p in points if p.get("label") or p.get("ring") or p.get("cls", "dot") != "dot"]
+            s.append(f'<circle class="ring-{p["ring"]}" cx="{cx:.1f}" cy="{cy:.1f}" r="{p["r"] + 3:.1f}"{g}/>')
 
     def hits(box, pts):
         x0, y0, x1, y1 = box
         return sum(1 for cx, cy, rr in pts if x0 - rr < cx < x1 + rr and y0 - rr < cy < y1 + rr)
 
-    def collides(box):
+    def layer(labeled, marked, lab_key="label", sub_key="sub"):
+        placed, out = [], []
+        for p in sorted(labeled, key=lambda p: -p.get("priority", 0)):
+            out += place(p, p[lab_key], p.get(sub_key, ""), placed, marked)
+        return out
+
+    def collides(box, placed, marked):
         x0, y0, x1, y1 = box
         if x0 < l or x1 > W - r or y0 < t or y1 > H - b:
             return True
@@ -242,9 +257,8 @@ def scatter(points, *, xmax, ymax, ystep, xlabel, ylabel, xfmt=str, xreverse=Fal
             return True
         return hits(box, marked) > 0
 
-    for p in sorted((p for p in points if p.get("label")), key=lambda p: -p.get("priority", 0)):
+    def place(p, lab, sub, placed, marked):
         cx, cy = p["_c"]
-        lab, sub = p["label"], p.get("sub", "")
         w = max(_text_w(lab, 14), _text_w(sub, 11.5)) + 4
         h = 30 if sub else 16
         best = None
@@ -255,21 +269,30 @@ def scatter(points, *, xmax, ymax, ystep, xlabel, ylabel, xfmt=str, xreverse=Fal
                 ly = cy + 5 + dy * 20
                 x0 = lx if an == "start" else lx - w
                 box = (x0, ly - 13, x0 + w, ly - 13 + h)
-                if collides(box):
+                if collides(box, placed, marked):
                     continue
                 score = k * 2 + hits(box, dots)
                 if not best or score < best[0]:
                     best = (score, lx, ly, an, box)
         if not best:
-            continue
+            return []
         _, lx, ly, an, box = best
         placed.append(box)
+        out = []
         if abs(ly - 5 - cy) > 14 or abs(lx - cx) > p["r"] + 12:
-            s.append(f'<line class="lead" x1="{cx:.1f}" y1="{cy:.1f}" x2="{lx:.1f}" y2="{ly - 5:.1f}"/>')
+            out.append(f'<line class="lead" x1="{cx:.1f}" y1="{cy:.1f}" x2="{lx:.1f}" y2="{ly - 5:.1f}"/>')
         color = f' style="fill:var(--{p["lab_color"]})"' if p.get("lab_color") else ""
-        s.append(f'<text class="lab" x="{lx:.1f}" y="{ly:.1f}" text-anchor="{an}"{color}>{esc(lab)}</text>')
+        out.append(f'<text class="lab" x="{lx:.1f}" y="{ly:.1f}" text-anchor="{an}"{color}>{esc(lab)}</text>')
         if sub:
-            s.append(f'<text class="sub" x="{lx:.1f}" y="{ly + 15:.1f}" text-anchor="{an}">{esc(sub)}</text>')
+            out.append(f'<text class="sub" x="{lx:.1f}" y="{ly + 15:.1f}" text-anchor="{an}">{esc(sub)}</text>')
+        return out
+
+    marked = [p["_c"] + (p["r"] + 4,) for p in points if p.get("label") or p.get("ring") or p.get("cls", "dot") != "dot"]
+    s.append('<g class="lay" data-lay="all">' + "".join(layer([p for p in points if p.get("label")], marked)) + '</g>')
+    for gi, _ in enumerate(groups or []):
+        mine = [p for p in points if p.get("group") == gi]
+        s.append(f'<g class="lay" data-lay="{gi}" style="display:none">'
+                 + "".join(layer(mine, [p["_c"] + (p["r"] + 4,) for p in mine], "glabel", "gsub")) + '</g>')
     s.append('</svg>')
     return "".join(s)
 
@@ -340,6 +363,32 @@ def winprob_card(m):
     return (f'<div class="panel wp-card"><div class="score"><span class="dot-a">{esc(h["team"])} {last[2]:.2f}</span>'
             f'<span class="dot-b" style="text-align:right">{last[3]:.2f} {esc(a["team"])}</span></div>{"".join(s)}'
             f'<div class="muted" style="font-size:13px">{stat}</div></div>')
+
+
+def highlight_box(svg, groups, summaries, what):
+    """Wrap a grouped scatter with a team picker that dims everyone else and labels the picked team's points."""
+    opts = "".join(f'<option value="{i}" data-sum="{esc(summaries.get(g, ""))}">{esc(g)}</option>'
+                   for i, g in sorted(enumerate(groups), key=lambda ig: ig[1].lower()))
+    uid = f"hl{abs(hash(what)) % 10**6}"
+    return (f'<div class="panel hl"><div class="hl-bar"><label for="{uid}">Highlight a team’s {esc(what)}</label>'
+            f'<select id="{uid}"><option value="">All teams</option>{opts}</select><span class="hl-sum muted"></span></div>'
+            f'<div class="scroll"><div style="min-width:680px">{svg}</div></div></div>')
+
+
+HIGHLIGHT_JS = """<script>
+document.querySelectorAll('.hl').forEach(function (box) {
+  var sel = box.querySelector('select'), svg = box.querySelector('svg'), sum = box.querySelector('.hl-sum');
+  function apply() {
+    var v = sel.value;
+    svg.classList.toggle('hl-on', v !== '');
+    svg.querySelectorAll('[data-g]').forEach(function (e) { e.classList.toggle('sel', e.getAttribute('data-g') === v); });
+    svg.querySelectorAll('.lay').forEach(function (g) { g.style.display = g.getAttribute('data-lay') === (v === '' ? 'all' : v) ? '' : 'none'; });
+    sum.textContent = v === '' ? '' : sel.selectedOptions[0].getAttribute('data-sum');
+  }
+  sel.addEventListener('change', apply);
+  apply();
+});
+</script>"""
 
 
 def footer(updated, extra=""):
