@@ -141,6 +141,8 @@ def build(league_id, out, with_winprob=True):
         ("schedule", "Schedule swap", '<p class="lede">Every team’s record if it had played each other team’s schedule.</p>' + render.swap_table(order, grid)),
         ("bench", "Points left on the bench", render.bench_table(stats.bench(lg))),
         ("waivers", "Waiver wire", pickups_chart(lg)),
+        ("waiver-wars", "Waiver wars", '<p class="lede">Players more than one team put in a claim for, who won them, and what the losing bidders missed out on.</p>'
+         + render.waiver_wars(*stats.waiver_wars(lg), sorted(lg.team.values(), key=str.lower))),
         ("trades", "Trade scorecard", render.trade_cards(stats.trades(lg))),
         ("draft", "Draft report card", draft_chart(lg)),
     ]
