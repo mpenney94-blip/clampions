@@ -241,7 +241,8 @@ def starts(lg, min_starts=4):
             continue
         vals = [v for _, v in xs]
         team = collections.Counter(t for t, _ in xs).most_common(1)[0][0]
-        out.append({"player": lg.name_of(pid), "pos": lg.pos_of(pid), "team": team, "starts": len(vals),
+        keeper = any(p["player_id"] == pid and p.get("is_keeper") and lg.team[p["roster_id"]] == team for p in lg.picks)
+        out.append({"player": lg.name_of(pid), "pos": lg.pos_of(pid), "team": team, "starts": len(vals), "keeper": keeper,
                     "avg": st.mean(vals), "sd": st.pstdev(vals), "low": min(vals), "high": max(vals)})
     return out
 

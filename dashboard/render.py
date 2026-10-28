@@ -5,6 +5,7 @@ import html
 import json
 import math
 import random
+import re
 
 esc = html.escape
 try:
@@ -477,9 +478,9 @@ def highlight_box(svg, groups, summaries, what, extra=0):
     special = list(enumerate(groups))[len(groups) - extra:]
     opts = "".join(f'<option value="{i}" data-sum="{esc(summaries.get(g, ""))}">{esc(g)}</option>'
                    for i, g in special + sorted(teams, key=lambda ig: ig[1].lower()))
-    uid = f"hl{abs(hash(what)) % 10**6}"
+    uid = "hl-" + re.sub(r"[^a-z0-9]+", "-", what.lower()).strip("-")
     return (f'<div class="panel hl"><div class="hl-bar"><label for="{uid}">Highlight a team’s {esc(what)}</label>'
-            f'<select id="{uid}"><option value="">All teams</option>{opts}</select><span class="hl-sum muted"></span></div>'
+            f'<select id="{uid}" autocomplete="off"><option value="">All teams</option>{opts}</select><span class="hl-sum muted"></span></div>'
             f'<div class="scroll"><div style="min-width:680px">{svg}</div></div></div>')
 
 
@@ -594,7 +595,7 @@ def team_grids(lg_name, grids, weeks, totals):
                 + f'<td class="n">{best:.1f}{gap(best - act)}</td><td></td></tr>')
         panels.append(f'<div data-panel="{i}"{"" if i == 0 else " hidden"}><table class="grid-t"><thead><tr><th>Player</th>{head}'
                       f'<th class="n">Started</th><th class="n">Bench</th></tr></thead><tbody>{"".join(body)}</tbody><tfoot>{foot}</tfoot></table></div>')
-    return (f'<div class="panel switch"><div class="hl-bar"><label for="grid-pick">Team</label><select id="grid-pick">{opts}</select></div>'
+    return (f'<div class="panel switch"><div class="hl-bar"><label for="grid-pick">Team</label><select id="grid-pick" autocomplete="off">{opts}</select></div>'
             f'<div class="scroll">{"".join(panels)}</div></div>'
             '<p class="note">Colored cells are starting-lineup scores (darker = more points, in 5-point steps). Gray italic numbers are points '
             'scored on the bench. Blank cells are weeks the player wasn’t on the roster or didn’t play. ★ = the team’s keeper. Best possible = the highest-scoring '
