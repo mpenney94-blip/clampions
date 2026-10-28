@@ -491,9 +491,10 @@ POS_ORDER = ["QB", "RB", "WR", "TE", "K", "DEF"]
 
 def carry_bars(rows):
     legend = '<div class="legend">' + "".join(f'<span><i style="background:var(--c{i})"></i>{p}</span>' for i, p in enumerate(POS_ORDER, 1)) + '</div>'
-    opts = '<option value="top">Top player’s share</option>' + "".join(f'<option value="{p}">{p} share</option>' for p in POS_ORDER)
+    opts = ('<option value="top" data-plain data-hint="Most reliant on one player first">Top player’s share</option>'
+            + "".join(f'<option value="{p}">{p} share</option>' for p in POS_ORDER))
     controls = (f'<div class="hl-bar"><label for="carry-sort">Sort by</label><select id="carry-sort" autocomplete="off">{opts}</select>'
-                f'<span class="muted carry-hint"></span></div>')
+                f'<span class="muted sort-hint"></span></div>')
     trs = []
     for r in rows:
         segs, data = [], [f'data-top="{r["top"]["share"]:.4f}"']
@@ -507,10 +508,10 @@ def carry_bars(rows):
             segs.append(f'<span data-pos="{p}" style="flex:{share:.4f};background:var(--c{i})" title="{p}: {v:.1f} pts ({share:.0%})">{txt}</span>')
         t = r["top"]
         trs.append(f'<tr {" ".join(data)}><td class="muted rank"></td><td class="team" style="white-space:nowrap">{esc(r["team"])}</td><td style="width:40%"><div class="stack">{"".join(segs)}</div></td>'
-                   f'<td class="n team carry-sel" hidden></td>'
+                   f'<td class="n team sort-col" hidden></td>'
                    f'<td>{esc(t["player"])} <b>{t["share"]:.0%}</b> <span class="muted">{t["pts"]:.0f} pts</span></td></tr>')
-    return (f'<div class="panel scroll carry">{controls}{legend}<table><thead><tr><th></th><th>Team</th><th>Share of starting-lineup points, by position</th>'
-            f'<th class="n carry-sel" hidden></th><th>Top player’s share</th></tr></thead><tbody>{"".join(trs)}</tbody></table></div>'
+    return (f'<div class="panel scroll sortbars">{controls}{legend}<table><thead><tr><th></th><th>Team</th><th>Share of starting-lineup points, by position</th>'
+            f'<th class="n sort-col" hidden></th><th>Top player’s share</th></tr></thead><tbody>{"".join(trs)}</tbody></table></div>'
             '<p class="note">Only points scored by players in the starting lineup count. Flex points go to the player’s own position. '
             'Pick a position to rank teams by how much of their scoring came from it.</p>')
 
@@ -518,23 +519,28 @@ def carry_bars(rows):
 def source_bars(src):
     kinds = [("draft", "Drafted", 1), ("waiver", "Waiver / free agent", 2), ("trade", "Trade", 3)]
     legend = '<div class="legend">' + "".join(f'<span><i style="background:var(--c{c})"></i>{lab}</span>' for _, lab, c in kinds) + '</div>'
+    opts = "".join(f'<option value="{k}" data-label="{lab}"{" selected" if k == "waiver" else ""}>{lab} share</option>' for k, lab, _ in kinds)
+    controls = (f'<div class="hl-bar"><label for="sources-sort">Sort by</label><select id="sources-sort" autocomplete="off">{opts}</select>'
+                f'<span class="muted sort-hint"></span></div>')
     trs = []
     for r in sorted(src.values(), key=lambda r: -r["waiver"] / (r["total"] or 1)):
-        segs = []
+        segs, data = [], []
         for k, lab, c in kinds:
             share = r[k] / (r["total"] or 1)
+            data.append(f'data-{k}="{share:.4f}" data-{k}-pts="{r[k]:.1f}"')
             if share > 0:
-                segs.append(f'<span style="flex:{share:.4f};background:var(--c{c})" title="{lab}: {r[k]:.1f} pts ({share:.0%})">'
+                segs.append(f'<span data-pos="{k}" style="flex:{share:.4f};background:var(--c{c})" title="{lab}: {r[k]:.1f} pts ({share:.0%})">'
                             f'{f"{share:.0%}" if share >= .08 else ""}</span>')
         best = r["best"].get("waiver")
-        trs.append(f'<tr><td class="team">{esc(r["team"])}</td><td style="width:42%"><div class="stack">{"".join(segs)}</div></td>'
+        trs.append(f'<tr {" ".join(data)}><td class="muted rank"></td><td class="team" style="white-space:nowrap">{esc(r["team"])}</td>'
+                   f'<td style="width:40%"><div class="stack">{"".join(segs)}</div></td>'
                    f'<td class="n">{r["draft"]:.1f}</td><td class="n">{r["waiver"]:.1f}</td><td class="n">{r["trade"]:.1f}</td>'
                    f'<td>{esc(best[0]) + f" <span class=muted>{best[1]:.1f}</span>" if best else "<span class=muted>—</span>"}</td></tr>')
-    return (f'<div class="panel scroll">{legend}<table><thead><tr><th>Team</th><th>Share of starting-lineup points</th><th class="n">Drafted</th>'
-            f'<th class="n">Waiver/FA</th><th class="n">Trade</th><th>Best pickup</th></tr></thead><tbody>{"".join(trs)}</tbody></table></div>'
+    return (f'<div class="panel scroll sortbars">{controls}{legend}<table><thead><tr><th></th><th>Team</th><th>Share of starting-lineup points</th>'
+            f'<th class="n">Drafted</th><th class="n">Waiver/FA</th><th class="n">Trade</th><th>Best pickup</th></tr></thead><tbody>{"".join(trs)}</tbody></table></div>'
             '<p class="note">Starting-lineup points only, credited to how that team got the player at the time: drafted it, picked it up '
             '(waiver claim or free agent) or traded for it. A drafted player who was dropped and picked back up counts as a pickup. '
-            'Teams are sorted by how much they’ve leaned on pickups.</p>')
+            'Pick a source to rank teams by how much of their scoring came from it.</p>')
 
 
 def round_table(src, rounds):
@@ -610,22 +616,22 @@ def team_grids(lg_name, grids, weeks, totals):
 
 
 HIGHLIGHT_JS = """<script>
-document.querySelectorAll('.carry').forEach(function (box) {
-  var sel = box.querySelector('select'), body = box.querySelector('tbody'), hint = box.querySelector('.carry-hint');
+document.querySelectorAll('.sortbars').forEach(function (box) {
+  var sel = box.querySelector('select'), body = box.querySelector('tbody'), hint = box.querySelector('.sort-hint');
+  var th = box.querySelector('th.sort-col');
   function apply() {
-    var v = sel.value, k = v.toLowerCase(), rows = Array.prototype.slice.call(body.rows);
+    var o = sel.selectedOptions[0], v = sel.value, k = v.toLowerCase(), plain = o.hasAttribute('data-plain'), lab = o.getAttribute('data-label') || v;
+    var rows = Array.prototype.slice.call(body.rows);
     rows.sort(function (a, b) { return +b.getAttribute('data-' + k) - +a.getAttribute('data-' + k); });
     rows.forEach(function (r, i) {
       body.appendChild(r);
       r.querySelector('.rank').textContent = i + 1;
-      var c = r.querySelector('td.carry-sel');
-      c.hidden = v === 'top';
-      if (v !== 'top') c.textContent = Math.round(+r.getAttribute('data-' + k) * 100) + '% · ' + r.getAttribute('data-' + k + '-pts');
-      r.querySelectorAll('.stack span').forEach(function (s) { s.style.opacity = v === 'top' || s.getAttribute('data-pos') === v ? '' : '.3'; });
+      var c = r.querySelector('td.sort-col');
+      if (c) { c.hidden = plain; if (!plain) c.textContent = Math.round(+r.getAttribute('data-' + k) * 100) + '% · ' + r.getAttribute('data-' + k + '-pts'); }
+      r.querySelectorAll('.stack span').forEach(function (s) { s.style.opacity = plain || s.getAttribute('data-pos') === v ? '' : '.3'; });
     });
-    box.querySelector('th.carry-sel').hidden = v === 'top';
-    box.querySelector('th.carry-sel').textContent = v === 'top' ? '' : v + ' share · pts';
-    hint.textContent = v === 'top' ? 'Most reliant on one player first' : 'Highest ' + v + ' share first';
+    if (th) { th.hidden = plain; th.textContent = plain ? '' : lab + ' share · pts'; }
+    hint.textContent = o.getAttribute('data-hint') || ('Highest ' + lab + ' share first');
   }
   sel.addEventListener('change', apply);
   apply();
