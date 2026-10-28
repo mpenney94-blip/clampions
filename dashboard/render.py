@@ -714,6 +714,34 @@ document.querySelectorAll('.wp-card').forEach(function (card) {
   function hide() { xh.style.display = 'none'; xd.style.display = 'none'; tip.hidden = true; }
   hit.addEventListener('pointermove', show); hit.addEventListener('pointerdown', show); hit.addEventListener('pointerleave', hide);
 });
+document.querySelectorAll('.trend-card').forEach(function (card) {
+  var pts = JSON.parse(card.getAttribute('data-pts')), W = +card.getAttribute('data-w'), season = +card.getAttribute('data-season');
+  var svg = card.querySelector('svg'), tip = card.querySelector('.wp-tip');
+  var xh = svg.querySelector('.xh'), xd = svg.querySelector('.xd'), hit = svg.querySelector('.hit');
+  function signed(v) { return (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1); }
+  function row(label, v, d) {
+    var r = document.createElement('div'); r.append(label + ' ');
+    if (v) { var b = document.createElement('b'); b.textContent = v; r.append(b); }
+    if (d !== undefined) { var s = document.createElement('b'); s.className = d >= 0 ? 'pos' : 'neg'; s.textContent = signed(d); r.append(s); }
+    return r;
+  }
+  function show(ev) {
+    var r = svg.getBoundingClientRect(), x = (ev.clientX - r.left) * W / r.width, i = 0;
+    pts.forEach(function (p, j) { if (Math.abs(p[0] - x) < Math.abs(pts[i][0] - x)) i = j; });
+    var p = pts[i];
+    xh.setAttribute('x1', p[0]); xh.setAttribute('x2', p[0]); xh.style.display = '';
+    xd.setAttribute('cx', p[0]); xd.setAttribute('cy', p[1]); xd.style.fill = p[3] >= season ? 'var(--good)' : 'var(--bad)'; xd.style.display = '';
+    tip.textContent = '';
+    var t = document.createElement('div'); t.className = 't'; t.textContent = 'Week ' + p[2]; tip.append(t);
+    tip.append(row('Score', p[3].toFixed(1)), row('vs. its season avg (' + season.toFixed(1) + ')', '', p[3] - season),
+               row('vs. league avg (' + p[5].toFixed(1) + ')', '', p[3] - p[5]), row('3-week avg', p[4].toFixed(1)));
+    tip.hidden = false;
+    var px = p[0] * r.width / W, tw = tip.offsetWidth;
+    tip.style.left = Math.max(0, Math.min(px + 12 + tw > r.width ? px - tw - 12 : px + 12, r.width - tw)) + 'px';
+  }
+  function hide() { xh.style.display = 'none'; xd.style.display = 'none'; tip.hidden = true; }
+  hit.addEventListener('pointermove', show); hit.addEventListener('pointerdown', show); hit.addEventListener('pointerleave', hide);
+});
 document.querySelectorAll('.switch').forEach(function (box) {
   var sel = box.querySelector('select');
   function apply() { box.querySelectorAll('[data-panel]').forEach(function (p) { p.hidden = p.getAttribute('data-panel') !== sel.value; }); }
@@ -879,15 +907,22 @@ def trend_cards(rows, league, weeks):
         pts = " ".join(f'{X(i):.1f},{Y(v):.1f}' for i, v in enumerate(x["roll"]))
         lgp = " ".join(f'{X(i):.1f},{Y(v):.1f}' for i, v in enumerate(league))
         dots = "".join(f'<circle cx="{X(i):.1f}" cy="{Y(v):.1f}" r="2.5" class="dot"><title>Week {weeks[i]}: {v:.1f}</title></circle>' for i, v in enumerate(x["pts"]))
+        hover = json.dumps([[round(X(i), 1), round(Y(v), 1), weeks[i], round(v, 1), round(x["roll"][i], 1), round(league[i], 1)]
+                            for i, v in enumerate(x["pts"])])
         svg = (f'<svg viewBox="0 0 {W} {H}" role="img" aria-label="{esc(x["team"])} scoring trend">'
                f'<polyline points="{lgp}" fill="none" style="stroke:var(--ink3);stroke-dasharray:3 3;stroke-width:1.2"/>{dots}'
                f'<polyline points="{pts}" fill="none" style="stroke:var({"--good" if diff >= 0 else "--bad"});stroke-width:2.2"/>'
-               f'<text x="{l}" y="{H - 3}">Wk {weeks[0]}</text><text x="{W - r_}" y="{H - 3}" text-anchor="end">Wk {weeks[-1]}</text></svg>')
-        cards.append(f'<div class="panel" style="padding:12px 14px"><div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline">'
+               f'<text x="{l}" y="{H - 3}">Wk {weeks[0]}</text><text x="{W - r_}" y="{H - 3}" text-anchor="end">Wk {weeks[-1]}</text>'
+               f'<line class="xh" y1="{t}" y2="{H - b}" style="display:none"/><circle class="xd" r="4" style="display:none"/>'
+               f'<rect class="hit" x="0" y="0" width="{W}" height="{H}" fill="transparent"/></svg>')
+        cards.append(f'<div class="panel trend-card" style="padding:12px 14px" data-pts="{esc(hover)}" data-w="{W}" data-season="{x["season"]:.1f}">'
+                     f'<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline">'
                      f'<b style="font-size:14px">{esc(x["team"])}</b><span class="{"pos" if diff >= 0 else "neg"}" style="font-size:13px">{"▲" if diff >= 0 else "▼"} {abs(diff):.1f}</span></div>'
-                     f'{svg}<div class="muted" style="font-size:12px">Last 3: <b style="color:var(--ink)">{x["recent"]:.1f}</b> · season {x["season"]:.1f}</div></div>')
+                     f'<div class="wp-plot">{svg}<div class="wp-tip" hidden></div></div>'
+                     f'<div class="muted" style="font-size:12px">Last 3: <b style="color:var(--ink)">{x["recent"]:.1f}</b> · season {x["season"]:.1f}</div></div>')
     return (f'<div class="trend-grid">{"".join(cards)}</div><p class="note">Colored line = 3-week rolling average (green if the last three weeks beat the season '
-            'average, red if not); dots = each week’s score; dashed line = league average. Sorted from hottest to coldest.</p>')
+            'average, red if not); dots = each week’s score; dashed line = league average. Covers every week played so far; ▲/▼ is the last three weeks against the season average. '
+            'Hover or tap a chart for each week’s numbers. Sorted from hottest to coldest.</p>')
 
 
 def position_table(rows, avg):
