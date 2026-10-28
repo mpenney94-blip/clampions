@@ -118,7 +118,11 @@ table.picks b.gone{text-decoration:line-through;text-decoration-thickness:1.5px;
 .tip td:first-child,.tip td:nth-child(2){white-space:nowrap}
 .tipwrap:hover .tip,.tipwrap:focus .tip{display:block}
 .tippanel{overflow:visible}
+.tip-close{display:none}
+.tipwrap.closed .tip{display:none!important}
 @media (max-width:640px){.tippanel{overflow-x:auto}
+ .tip-close{display:block;position:sticky;top:0;float:right;margin:-4px -4px 0 8px;width:36px;height:36px;border-radius:50%;
+  border:1px solid var(--rule);background:var(--surface);color:var(--ink);font-size:16px;line-height:1;cursor:pointer}
  .tip{position:fixed;left:12px;right:12px;bottom:max(12px,env(safe-area-inset-bottom));top:auto;width:auto;max-width:none;max-height:60vh;overflow:auto}}
 .wp-plot{position:relative}
 svg .xh{stroke:var(--ink3);stroke-width:1}
@@ -269,7 +273,7 @@ def waiver_wars(claims, per_team, teams):
                       for x in sorted(v["claims"], key=lambda x: -x["claim"]["since"]))
         trs.append(f'<tr><td class="team">{esc(t)}</td><td class="barcell"><div class="tipwrap" tabindex="0" aria-label="{esc(t)}’s lost claims">'
                    f'<div class="track"><span style="width:{100 * v["missed"] / mx:.1f}%"></span></div>'
-                   f'<div class="tip" role="tooltip"><div class="eyebrow">{esc(t)} lost out on</div><table>{tip}</table></div></div></td>'
+                   f'<div class="tip" role="tooltip"><button type="button" class="tip-close" aria-label="Close">✕</button><div class="eyebrow">{esc(t)} lost out on</div><table>{tip}</table></div></div></td>'
                    f'<td class="n">{v["lost"]}</td><td class="n team">{v["missed"]:.1f}</td><td>{esc(b["player"])} <span class="muted">{b["since"]:.1f} pts</span></td></tr>')
     team_tbl = ('<h3 style="margin-top:18px">Points that got away, by team</h3><p class="lede" style="margin:0 0 8px">Hover or tap a bar to see who they lost out on.</p><div class="panel tippanel"><table><thead><tr><th>Team</th>'
                 '<th class="barcell">Points missed</th><th class="n">Lost claims</th><th class="n">Pts</th><th>Biggest miss</th></tr></thead>'
@@ -503,12 +507,13 @@ POS_ORDER = ["QB", "RB", "WR", "TE", "K", "DEF"]
 def carry_bars(rows):
     legend = '<div class="legend">' + "".join(f'<span><i style="background:var(--c{i})"></i>{p}</span>' for i, p in enumerate(POS_ORDER, 1)) + '</div>'
     opts = ('<option value="top" data-plain data-hint="Most reliant on one player first">Top player’s share</option>'
+            '<option value="total" data-plain data-hint="Most starting-lineup points first">Total points</option>'
             + "".join(f'<option value="{p}">{p} share</option>' for p in POS_ORDER))
     controls = (f'<div class="hl-bar"><label for="carry-sort">Sort by</label><select id="carry-sort" autocomplete="off">{opts}</select>'
                 f'<span class="muted sort-hint"></span></div>')
     trs = []
     for r in rows:
-        segs, data = [], [f'data-top="{r["top"]["share"]:.4f}"']
+        segs, data = [], [f'data-top="{r["top"]["share"]:.4f}" data-total="{r["total"]:.1f}"']
         for i, p in enumerate(POS_ORDER, 1):
             v = r["by_pos"].get(p, 0)
             share = v / r["total"]
@@ -519,12 +524,12 @@ def carry_bars(rows):
             segs.append(f'<span data-pos="{p}" style="flex:{share:.4f};background:var(--c{i})" title="{p}: {v:.1f} pts ({share:.0%})">{txt}</span>')
         t = r["top"]
         trs.append(f'<tr {" ".join(data)}><td class="muted rank"></td><td class="team" style="white-space:nowrap">{esc(r["team"])}</td><td style="width:40%"><div class="stack">{"".join(segs)}</div></td>'
-                   f'<td class="n team sort-col" hidden></td>'
-                   f'<td>{esc(t["player"])} <b>{t["share"]:.0%}</b> <span class="muted">{t["pts"]:.0f} pts</span></td></tr>')
+                   f'<td class="n team sort-col" hidden></td><td class="n team">{r["total"]:.1f}</td>'
+                   f'<td style="white-space:nowrap">{esc(t["player"])} <b>{t["share"]:.0%}</b> <span class="muted">{t["pts"]:.0f} pts</span></td></tr>')
     return (f'<div class="panel scroll sortbars">{controls}{legend}<table><thead><tr><th></th><th>Team</th><th>Share of starting-lineup points, by position</th>'
-            f'<th class="n sort-col" hidden></th><th>Top player’s share</th></tr></thead><tbody>{"".join(trs)}</tbody></table></div>'
+            f'<th class="n sort-col" hidden></th><th class="n">Total</th><th>Top player’s share</th></tr></thead><tbody>{"".join(trs)}</tbody></table></div>'
             '<p class="note">Only points scored by players in the starting lineup count. Flex points go to the player’s own position. '
-            'Pick a position to rank teams by how much of their scoring came from it.</p>')
+            'Pick a position to rank teams by how much of their scoring came from it, or Total points to rank by starting-lineup points.</p>')
 
 
 def source_bars(src):
@@ -629,6 +634,16 @@ def team_grids(lg_name, grids, weeks, totals):
 
 
 HIGHLIGHT_JS = """<script>
+document.querySelectorAll('.tipwrap').forEach(function (w) {
+  function close(e) { e.preventDefault(); e.stopPropagation(); w.classList.add('closed'); w.blur(); }
+  w.addEventListener('pointerdown', function (e) { if (!e.target.closest('.tip-close')) w.classList.remove('closed'); });
+  w.addEventListener('focus', function () { w.classList.remove('closed'); });
+  var b = w.querySelector('.tip-close');
+  if (b) { b.addEventListener('pointerdown', close); b.addEventListener('click', close); }
+});
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape' && document.activeElement && document.activeElement.classList.contains('tipwrap')) document.activeElement.blur();
+});
 document.querySelectorAll('table.expand tr.xrow').forEach(function (row) {
   function toggle() {
     var open = row.getAttribute('aria-expanded') !== 'true', d = document.getElementById(row.getAttribute('aria-controls'));
