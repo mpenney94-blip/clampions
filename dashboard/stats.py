@@ -1,0 +1,214 @@
+"""Load a Sleeper league's season and compute the dashboard's stats."""
+
+import collections
+import datetime as dt
+import statistics as st
+
+import winprob
+from sleeper import SleeperClient
+
+POSITIONS = ["QB", "RB", "WR", "TE", "K", "DEF"]
+FLEX = {"FLEX": ("RB", "WR", "TE"), "SUPER_FLEX": ("QB", "RB", "WR", "TE"),
+        "REC_FLEX": ("WR", "TE"), "WRRB_FLEX": ("RB", "WR")}
+
+
+class League:
+    """Everything the dashboard needs about one league, through the last scored week."""
+
+    def __init__(self, league_id, client=None):
+        c = self.client = client or SleeperClient()
+        self.id = league_id
+        self.info = c.league(league_id)
+        self.name = self.info["name"]
+        self.season = self.info["season"]
+        self.scoring = self.info["scoring_settings"]
+        self.slots = [s for s in self.info["roster_positions"] if s not in ("BN", "IR", "TAXI")]
+        self.weeks = list(range(self.info["settings"].get("start_week", 1), self.info["settings"].get("last_scored_leg", 0) + 1))
+        users = {u["user_id"]: u for u in c.league_users(league_id)}
+        self.team = {}
+        for r in c.rosters(league_id):
+            u = users.get(r["owner_id"]) or {}
+            self.team[r["roster_id"]] = (u.get("metadata") or {}).get("team_name") or u.get("display_name") or f"Team {r['roster_id']}"
+        self.players = c.players()
+        self.matchups = {w: c.matchups(league_id, w) for w in self.weeks}
+        self.pts = collections.defaultdict(dict)  # player_id -> week -> league-scored points (anyone, rostered or not)
+        for w in self.weeks:
+            rows = winprob._fetch(f"https://api.sleeper.app/stats/nfl/{self.season}/{w}?season_type=regular"
+                                  + "".join(f"&position[]={p}" for p in POSITIONS))
+            for r in rows:
+                s = r.get("stats") or {}
+                if s.get("gp") or s.get("gms_active") or r["player_id"].isalpha():
+                    self.pts[r["player_id"]][w] = round(winprob.score_stats(s, self.scoring), 2)
+            for m in self.matchups[w]:  # Sleeper's own numbers win where we have them
+                for pid, v in (m.get("players_points") or {}).items():
+                    self.pts[pid][w] = v
+        self.transactions = []
+        for w in self.weeks + [self.weeks[-1] + 1] if self.weeks else []:
+            self.transactions += [dict(t, leg=w) for t in c.transactions(league_id, w) if t["status"] == "complete"]
+        drafts = c.league_drafts(league_id)
+        self.picks = c.draft_picks(drafts[0]["draft_id"]) if drafts else []
+        self._kickoffs = {}
+
+    # ---- helpers
+    def name_of(self, pid):
+        return (self.players.get(pid) or {}).get("full_name") or pid
+
+    def pos_of(self, pid):
+        return "DEF" if pid.isalpha() else (self.players.get(pid) or {}).get("position")
+
+    def scores(self, w):
+        return {m["roster_id"]: m["points"] or 0.0 for m in self.matchups[w]}
+
+    def opponent(self, w):
+        ms = self.matchups[w]
+        by = collections.defaultdict(list)
+        for m in ms:
+            if m.get("matchup_id") is not None:
+                by[m["matchup_id"]].append(m["roster_id"])
+        return {a: b for pair in by.values() if len(pair) == 2 for a, b in (pair, pair[::-1])}
+
+    def kickoffs(self, w):
+        if w not in self._kickoffs:
+            g = winprob.espn_games(self.season, w)
+            self._kickoffs[w] = (min(x["kickoff"] for x in g), max(x["kickoff"] for x in g)) if g else (0, 0)
+        return self._kickoffs[w]
+
+    def first_week_after(self, ts):
+        """First week whose games had not all kicked off by unix time ts."""
+        for w in self.weeks:
+            if ts < self.kickoffs(w)[1]:
+                return w
+        return (self.weeks[-1] + 1) if self.weeks else 1
+
+
+def _result(a, b):
+    return 0 if a > b else 1 if a < b else 2
+
+
+def allplay(lg):
+    rows = []
+    for r, name in lg.team.items():
+        ap, real, pf, pa = [0, 0, 0], [0, 0, 0], 0.0, 0.0
+        for w in lg.weeks:
+            sc, opp = lg.scores(w), lg.opponent(w)
+            pf += sc[r]
+            for o, v in sc.items():
+                if o != r:
+                    ap[_result(sc[r], v)] += 1
+            if r in opp:
+                pa += sc[opp[r]]
+                real[_result(sc[r], sc[opp[r]])] += 1
+        games = sum(real)
+        pct = (ap[0] + ap[2] / 2) / sum(ap) if sum(ap) else 0
+        rows.append({"team": name, "roster_id": r, "allplay": ap, "pct": pct, "record": real, "pf": pf, "pa": pa,
+                     "luck": real[0] + real[2] / 2 - pct * games})
+    rows.sort(key=lambda x: (-x["pct"], -x["pf"]))
+    return rows
+
+
+def schedule_swap(lg, order):
+    """grid[i][j] = wins team order[i] would have with order[j]'s schedule."""
+    def wins(t, u):
+        n = 0
+        for w in lg.weeks:
+            sc, opp = lg.scores(w), lg.opponent(w)
+            o = opp.get(u)
+            if o is None:
+                continue
+            if o == t:
+                o = u
+            n += sc[t] > sc[o]
+        return n
+    return [[wins(t, u) for u in order] for t in order]
+
+
+def _optimal(lg, pp):
+    avail = sorted(pp.items(), key=lambda kv: -kv[1])
+    used, tot = [], 0.0
+    for s in sorted(lg.slots, key=lambda s: s in FLEX):
+        ok = FLEX.get(s, (s,))
+        for pid, v in avail:
+            if pid not in used and lg.pos_of(pid) in ok:
+                used.append(pid)
+                tot += v
+                break
+    return tot, used
+
+
+def bench(lg):
+    out = {r: {"team": n, "lost": 0.0, "flips": [], "worst": None} for r, n in lg.team.items()}
+    for w in lg.weeks:
+        sc, opp = lg.scores(w), lg.opponent(w)
+        for m in lg.matchups[w]:
+            r = m["roster_id"]
+            opt, used = _optimal(lg, m.get("players_points") or {})
+            out[r]["lost"] += opt - sc[r]
+            if r in opp and sc[r] < sc[opp[r]] < opt:
+                out[r]["flips"].append(w)
+            for pid in used:
+                if pid not in m["starters"]:
+                    v = m["players_points"][pid]
+                    if not out[r]["worst"] or v > out[r]["worst"]["pts"]:
+                        out[r]["worst"] = {"player": lg.name_of(pid), "pts": v, "week": w}
+    return sorted(out.values(), key=lambda x: -x["lost"])
+
+
+def pickups(lg):
+    """Waiver and free-agent adds, with points per game while on the adding team's roster."""
+    roster = {(m["roster_id"], w): (set(m.get("players") or []), m.get("players_points") or {})
+              for w in lg.weeks for m in lg.matchups[w]}
+    seen, out = set(), []
+    for t in sorted(lg.transactions, key=lambda t: t["status_updated"]):
+        if t["type"] not in ("waiver", "free_agent"):
+            continue
+        for pid, r in (t.get("adds") or {}).items():
+            if (r, pid) in seen or lg.pos_of(pid) not in POSITIONS:
+                continue
+            seen.add((r, pid))
+            weeks = [w for w in lg.weeks if w >= t["leg"] and pid in roster.get((r, w), (set(), {}))[0] and w in lg.pts.get(pid, {})]
+            if not weeks:
+                continue
+            total = sum(roster[(r, w)][1].get(pid, 0) for w in weeks)
+            out.append({"player": lg.name_of(pid), "pos": lg.pos_of(pid), "team": lg.team[r],
+                        "bid": (t.get("settings") or {}).get("waiver_bid", 0) if t["type"] == "waiver" else 0,
+                        "games": len(weeks), "total": total, "ppg": total / len(weeks)})
+    return out
+
+
+def trades(lg):
+    out = []
+    for t in sorted((t for t in lg.transactions if t["type"] == "trade"), key=lambda t: t["status_updated"]):
+        eff = lg.first_week_after(t["status_updated"] / 1000)
+        weeks = [w for w in lg.weeks if w >= eff]
+        sides = []
+        for r in t["roster_ids"]:
+            got = [{"player": lg.name_of(p), "pos": lg.pos_of(p), "since": sum(lg.pts.get(p, {}).get(w, 0) for w in weeks)}
+                   for p, rr in (t.get("adds") or {}).items() if rr == r]
+            picks = [f"{dp['season']} round {dp['round']} pick" for dp in (t.get("draft_picks") or []) if dp.get("owner_id") == r]
+            sides.append({"team": lg.team[r], "got": got, "picks": picks, "total": sum(g["since"] for g in got)})
+        out.append({"weeks": weeks, "when": dt.datetime.fromtimestamp(t["status_updated"] / 1000, dt.timezone.utc), "sides": sides})
+    return out
+
+
+def draft(lg, window=15):
+    rows = []
+    for p in lg.picks:
+        pid = p["player_id"]
+        rows.append({"pick": p["pick_no"], "round": p["round"], "player": lg.name_of(pid),
+                     "pos": lg.pos_of(pid) or (p.get("metadata") or {}).get("position"),
+                     "team": lg.team.get(p["roster_id"], "?"), "pts": sum(lg.pts.get(pid, {}).get(w, 0) for w in lg.weeks)})
+    for x in rows:
+        x["exp"] = st.median(y["pts"] for y in rows if abs(y["pick"] - x["pick"]) <= window)
+        x["value"] = x["pts"] - x["exp"]
+    return rows
+
+
+def recap(lg, w):
+    sc, opp = lg.scores(w), lg.opponent(w)
+    games = sorted({tuple(sorted((a, b))) for a, b in opp.items()})
+    gl = [{"a": lg.team[a], "b": lg.team[b], "pa": sc[a], "pb": sc[b], "margin": abs(sc[a] - sc[b])} for a, b in games]
+    hi = max(sc, key=sc.get)
+    lo = min(sc, key=sc.get)
+    return {"week": w, "games": gl, "high": (lg.team[hi], sc[hi]), "low": (lg.team[lo], sc[lo]),
+            "closest": min(gl, key=lambda g: g["margin"]), "blowout": max(gl, key=lambda g: g["margin"]),
+            "median": st.median(sc.values())}
