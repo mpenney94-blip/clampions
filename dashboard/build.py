@@ -212,19 +212,19 @@ def build(league_id, out, with_winprob=True):
         ("awards", f"Week {last} awards", render.awards_tiles(weekly.awards(lg, last, wp_last), last)),
         ("power", "Power rankings", render.power_table(weekly.power(lg), pw_prev)),
     ]
-    if lg.reg_weeks and last < lg.reg_weeks[-1]:
+    more_games = lg.reg_weeks and last < lg.reg_weeks[-1]
+    if more_games:
         week_sections.append(("playoffs", "Playoff odds", render.playoff_table(po_now, po_prev, lg.playoff_teams, div_names)))
-        week_sections.append(("preview", f"Week {lg.next_week} preview", render.preview_cards(weekly.preview(lg, lg.next_week), lg.next_week)))
     if with_winprob:
         week_sections.append(("winprob", f"Week {last} win probability", winprob_html))
-    week_sections += [
-        ("projections", "Beating the projections", render.projection_table(proj_rows, proj_over, proj_under, last)),
-        ("close", "Close games", render.close_table(*weekly.close_games(lg))),
-        ("trends", "Scoring trends", render.trend_cards(tr_rows, tr_league, lg.weeks)),
-    ]
+    if more_games:
+        week_sections.append(("preview", f"Week {lg.next_week} preview", render.preview_cards(weekly.preview(lg, lg.next_week), lg.next_week)))
     season_sections = [
         ("standings", "All-play standings", '<p class="lede">How each team would stand if everyone played everyone every week, next to their real record.</p>' + render.allplay_table(ap, lg.weeks)),
         ("schedule", "Schedule swap", '<p class="lede">Every team’s record if it had played each other team’s schedule.</p>' + render.swap_table(order, grid)),
+        ("projections", "Beating the projections", render.projection_table(proj_rows, proj_over, proj_under, last)),
+        ("close", "Close games", render.close_table(*weekly.close_games(lg))),
+        ("trends", "Scoring trends", render.trend_cards(tr_rows, tr_league, lg.weeks)),
         ("position", "Position strength", render.position_table(*weekly.position_strength(lg))),
         ("injuries", "Injury and bye damage", render.availability_table(weekly.availability(lg))),
         ("bench", "Points left on the bench", render.bench_table(stats.bench(lg))),
