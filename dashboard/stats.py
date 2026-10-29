@@ -540,10 +540,9 @@ def season_summary(lg):
         for m in winprob._fetch(f"https://api.sleeper.app/v1/league/{lg.id}/winners_bracket") or []:
             in_playoffs |= {m.get("t1"), m.get("t2")} - {None}
     own = lg.owner
-    if lg.complete:  # playoff teams place by the bracket; everyone else by regular-season standing (consolation games are noise)
-        out_ = sorted((r for r in lg.team if r not in in_playoffs), key=lambda r: reg_rank[r])
-        finish = {r: finish[r] for r in in_playoffs if r in finish}
-        finish.update({r: len(in_playoffs) + i for i, r in enumerate(out_, 1)})
+    if lg.complete:  # anyone the brackets didn't place falls back to regular-season standing
+        for r in sorted((r for r in lg.team if r not in finish), key=lambda r: reg_rank[r]):
+            finish[r] = min(set(range(1, len(lg.team) + 1)) - set(finish.values()))
     teams = {own[r]: {"team": lg.team[r], "wins": rec[r][0], "losses": rec[r][1], "ties": rec[r][2],
                       "pf": round(pf[r], 2), "pa": round(pa[r], 2), "reg_rank": reg_rank[r],
                       "playoffs": (r in in_playoffs) if lg.complete else None,
@@ -567,7 +566,7 @@ def season_summary(lg):
             if a and b:
                 sc = {x["roster_id"]: x["points"] or 0.0 for x in lg.client.matchups(lg.id, w)}
                 games.append([w, own[a], round(sc.get(a, 0), 2), own[b], round(sc.get(b, 0), 2), True])
-    pickups_ = sorted((a for a in pickups(lg) if a["pos"] not in ("K", "DEF")), key=lambda a: -a["total"])[:15]
+    pickups_ = sorted(pickups(lg), key=lambda a: -a["total"])[:15]
     return {
         "season": lg.season, "complete": lg.complete, "weeks": len(lg.weeks), "playoff_teams": lg.playoff_teams, "teams": teams,
         "keepers": keepers, "trades": trade_rows, "games": games,
