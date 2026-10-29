@@ -57,3 +57,8 @@ workflow keeps their builds in the Actions cache and rebuilds them only when the
 The "week in review" and next-week "trash talk" sections are written from a fact sheet of each week's stats
 (`dashboard/commentary.py`). If the repository has an `ANTHROPIC_API_KEY` Actions secret, Claude writes them;
 otherwise a built-in writer fills in from canned lines.
+
+### All-time tab
+
+Each season's build also writes a `summary.json` (record, points, finish, keepers, trades, best pickups and worst drops,
+keyed by Sleeper owner id so renamed teams stay together). The all-time page is built from those summaries.
