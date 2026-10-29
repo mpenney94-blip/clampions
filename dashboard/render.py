@@ -94,7 +94,9 @@ svg.hl-on [class^="ring-"].sel{opacity:1}
 .legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:0 0 10px;font-size:14px;color:var(--ink2)}
 .legend i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:6px;vertical-align:-1px}
 .grid-t td.w{text-align:center;min-width:44px;font-weight:700;border:2px solid var(--surface);padding:6px 4px}
-.grid-t tr.tot td.n{text-align:center}
+.grid-t tr.tot td.n,.grid-t th.n,.grid-t td.n{text-align:center}
+table.swap th.col{text-align:center}
+table.board th,table.board td{text-align:center}
 .grid-t tr.tot td{font-weight:700;border-top:2px solid var(--rule);border-bottom:0;white-space:nowrap}
 .grid-t td.kept{outline:2.5px solid var(--ink);outline-offset:-3px}
 .star{color:var(--c4);margin-left:3px;font-size:.9em}
@@ -1155,19 +1157,19 @@ def drop_table(rows):
         if x["readded"]:
             where += ' · <span class="muted">re-added later</span>'
         hurt = f'<div class="neg" style="font-size:12px">{x["started_elsewhere"]:.1f} pts in other teams’ lineups</div>' if x["started_elsewhere"] >= 1 else ""
-        trs.append(f'<tr><td class="muted">{i}</td><td><b>{esc(x["player"])}</b> <span class="muted">{x["pos"] or ""}</span>'
+        trs.append(f'<tr><td class="n muted">{i}</td><td data-v="{esc(x["player"].lower())}"><b>{esc(x["player"])}</b> <span class="muted">{x["pos"] or ""}</span>'
                    f'<div style="font-size:12.5px">{where}</div></td>'
-                   f'<td class="team" style="white-space:nowrap">{esc(x["team"])}<div class="muted" style="font-size:12px;font-weight:400">before week {x["week"]}</div></td>'
-                   f'<td class="n">{x["before"]:.1f}<div class="muted" style="font-size:12px;white-space:nowrap">{x["before_games"]} g · {ppg(x["before"], x["before_games"])}/g</div></td>'
-                   f'<td class="barcell"><div class="track"><span style="width:{100 * x["after"] / mx:.1f}%;background:var(--bad)"></span></div>{hurt}</td>'
-                   f'<td class="n team">{x["after"]:.1f}<div class="muted" style="font-size:12px;font-weight:400;white-space:nowrap">{x["after_games"]} g · {ppg(x["after"], x["after_games"])}/g</div></td>'
-                   f'<td class="n">{x["best"][0]:.1f}<div class="muted" style="font-size:12px">wk {x["best"][1]}</div></td></tr>')
-    return (f'<div class="panel scroll"><table><thead><tr><th></th><th>Player</th><th>Dropped by</th><th class="n">With them</th>'
+                   f'<td class="team" style="white-space:nowrap" data-v="{esc(x["team"].lower())}">{esc(x["team"])}<div class="muted" style="font-size:12px;font-weight:400">before week {x["week"]}</div></td>'
+                   f'<td class="n" data-v="{x["before"]:.1f}">{x["before"]:.1f}<div class="muted" style="font-size:12px;white-space:nowrap">{x["before_games"]} g · {ppg(x["before"], x["before_games"])}/g</div></td>'
+                   f'<td class="barcell" data-v="{x["after"]:.1f}"><div class="track"><span style="width:{100 * x["after"] / mx:.1f}%;background:var(--bad)"></span></div>{hurt}</td>'
+                   f'<td class="n team" data-v="{x["after"]:.1f}">{x["after"]:.1f}<div class="muted" style="font-size:12px;font-weight:400;white-space:nowrap">{x["after_games"]} g · {ppg(x["after"], x["after_games"])}/g</div></td>'
+                   f'<td class="n" data-v="{x["best"][0]:.1f}">{x["best"][0]:.1f}<div class="muted" style="font-size:12px">wk {x["best"][1]}</div></td></tr>')
+    return (f'<div class="panel scroll"><table class="sortable"><thead><tr><th class="n">#</th><th>Player</th><th>Dropped by</th><th class="n">With them</th>'
             f'<th class="barcell">Points since the drop</th><th class="n">Since</th><th class="n">Best game</th></tr></thead>'
             f'<tbody>{"".join(trs)}</tbody></table></div>'
             '<p class="note">The players whose drops have aged worst, ranked by fantasy points scored since the team let them go '
             '(wherever they landed, including weeks on waivers). “With them” is what he scored for that team in games he played before the drop. '
-            'If the team picked him back up, the count stops there. Kickers and defenses are left out, since streaming them is the plan.</p>')
+            'If the team picked him back up, the count stops there. Kickers and defenses are left out, since streaming them is the plan. Click a column header to sort.</p>')
 
 
 # ---------------------------------------------------------------- all-time page
@@ -1680,7 +1682,7 @@ def draft_board(d, teams):
                        f'<div class="{"pos" if x["value"] >= 0 else "neg"}" style="font-size:11px">{x["pts"]:.0f}</div></td>')
         trs.append(f'<tr><td class="muted" style="font-size:12px">R{rd}</td>{"".join(tds)}</tr>')
     legend = '<div class="legend">' + "".join(f'<span><i style="background:var(--c{i})"></i>{p}</span>' for p, i in pos_i.items()) + '</div>'
-    return (f'<div class="panel scroll">{legend}<table class="picks" style="min-width:{90 * len(d["slots"])}px"><thead><tr><th></th>{head}</tr></thead>'
+    return (f'<div class="panel scroll">{legend}<table class="picks board" style="min-width:{90 * len(d["slots"])}px"><thead><tr><th></th>{head}</tr></thead>'
             f'<tbody>{"".join(trs)}</tbody></table></div>'
             '<p class="note">The whole draft, by round and draft slot (columns are named for the team that picked first in that slot). '
             'Colors = position; the number is the player’s points this season, green if he beat his slot and red if not. '
@@ -1693,17 +1695,20 @@ def redraft_table(d):
         o = z["orig"]
         if o:
             move = o["pick"] - i
-            was = (f'#{o["pick"]} <span class="muted">({esc(o["team"])})</span> '
-                   f'<span class="{"pos" if move > 0 else "neg" if move < 0 else "muted"}" style="font-size:12px">{"▲" if move > 0 else "▼" if move < 0 else ""}{abs(move) or "="}</span>')
+            was = f'#{o["pick"]} <span class="muted">({esc(o["team"])})</span>'
         else:
             was = '<span class="pos">Undrafted</span>'
-        trs.append(f'<tr><td class="muted">{i}</td><td><b>{esc(z["player"])}</b> <span class="muted">{z["pos"]}</span></td>'
-                   f'<td class="n">{z["pts"]:.1f}</td><td class="n muted">{z["games"]}</td><td class="n team">{z["var"]:+.0f}</td><td>{was}</td></tr>')
-    return (f'<div class="panel scroll"><table><thead><tr><th>Redraft</th><th>Player</th><th class="n">Points</th><th class="n">Games</th>'
-            f'<th class="n">Above replacement</th><th>Actually went</th></tr></thead><tbody>{"".join(trs)}</tbody></table></div>'
+        trs.append(f'<tr><td class="n muted">{i}</td><td data-v="{esc(z["player"].lower())}"><b>{esc(z["player"])}</b> <span class="muted">{z["pos"]}</span></td>'
+                   f'<td data-v="{z["pos"].lower()}">{z["pos"]}</td>'
+                   f'<td class="n">{z["pts"]:.1f}</td><td class="n muted">{z["games"]}</td><td class="n team" data-v="{z["var"]:.1f}">{z["var"]:+.0f}</td>'
+                   f'<td data-v="{-(o["pick"] if o else 999)}">{was}</td>'
+                   f'<td class="n {"pos" if not o or o["pick"] > i else "neg" if o["pick"] < i else "muted"}" data-v="{(o["pick"] - i) if o else 999}">'
+                   f'{"new" if not o else f"{o["pick"] - i:+d}" if o["pick"] != i else "="}</td></tr>')
+    return (f'<div class="panel scroll"><table class="sortable"><thead><tr><th class="n">Redraft</th><th>Player</th><th>Pos</th><th class="n">Points</th><th class="n">Games</th>'
+            f'<th class="n">Above replacement</th><th>Actually went</th><th class="n">Spots gained</th></tr></thead><tbody>{"".join(trs)}</tbody></table></div>'
             '<p class="note">The first two rounds if the draft were redone knowing this season’s results. Players are ranked by points above a '
             'replacement-level starter at their position (the last starter the league would field there), so quarterbacks don’t take over the board. '
-            'Kickers and defenses are left out.</p>')
+            'Kickers and defenses are left out. Spots gained = how far up the board he’d go now. Click a column header to sort.</p>')
 
 
 def payoff_table(d):
