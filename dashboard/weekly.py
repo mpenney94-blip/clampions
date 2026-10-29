@@ -88,13 +88,48 @@ def playoff_odds(lg, through=None, sims=10000, seed=7):
             if i == 0:
                 t["first"] += 1
         tally[order[-1]]["last"] += 1
+    clinch = _clinched(lg, wins0, pf0, sched, n_po, divs)
     out = []
     for r in rids:
         t = tally[r]
-        out.append({"team": lg.team[r], "rid": r, "wins": wins0[r], "losses": len(played) - wins0[r], "pf": pf0[r],
+        out.append({"team": lg.team[r], "rid": r, "wins": wins0[r], "losses": len(played) - wins0[r], "pf": pf0[r], **clinch[r],
                     "playoffs": t["playoffs"] / sims, "bye": t["bye"] / sims, "first": t["first"] / sims,
                     "last": t["last"] / sims, "proj_wins": t["wins"] / sims, "division": lg.division.get(r)})
     return sorted(out, key=lambda x: (-x["playoffs"], -x["bye"], -x["proj_wins"]))
+
+
+def _misses(d, o, n_po, n_div):
+    """Can a team miss the playoffs with d division-mates and o other teams finishing ahead of it?
+    The top two in each division are in, then wild cards: to miss, two division-mates must be ahead and the wild cards
+    must also go to teams ahead of it, from its own division (beyond the top two) or the other one (beyond that division's top two)."""
+    wild = n_po - 2 * n_div
+    if d < 2:
+        return False
+    return any(a + b >= wild for a in range(wild + 1) for b in range(wild + 1) if d - 2 >= a and (b == 0 or o - 2 >= b))
+
+
+def _clinched(lg, wins0, pf0, sched, n_po, divs):
+    """Mathematical clinches and eliminations: worst case (lose out, every rival wins out, ties go against) and best case."""
+    left = collections.Counter(r for games in sched.values() for pair in games for r in pair)
+    out = {}
+    two_divs = len(divs) == 2 and None not in divs
+    for r in wins0:
+        lo, hi = wins0[r], wins0[r] + left[r]
+        mates = [x for x in divs.get(lg.division.get(r), []) if x != r]
+        others = [x for x in wins0 if x != r and x not in mates]
+        settled = lambda x: not left[r] and not left[x]       # both done: a tie in wins is already decided on points
+        can_pass = lambda x: (wins0[x], pf0[x]) > (lo, pf0[r]) if settled(x) else wins0[x] + left[x] >= lo  # could finish ahead
+        sure_ahead = lambda x: (wins0[x], pf0[x]) > (hi, pf0[r]) if settled(x) else wins0[x] > hi          # ahead even if it wins out
+        if two_divs:
+            po = not _misses(sum(map(can_pass, mates)), sum(map(can_pass, others)), n_po, len(divs))
+            out_ = _misses(sum(map(sure_ahead, mates)), sum(map(sure_ahead, others)), n_po, len(divs))
+            bye = not any(map(can_pass, mates))
+        else:
+            po = sum(can_pass(x) for x in wins0 if x != r) < n_po
+            out_ = sum(sure_ahead(x) for x in wins0 if x != r) >= n_po
+            bye = False
+        out[r] = {"clinched": po, "clinched_bye": bye, "eliminated": out_}
+    return out
 
 
 # ---------------------------------------------------------------- power rankings

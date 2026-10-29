@@ -816,7 +816,9 @@ def playoff_table(rows, prev, n_playoff, div_names):
     trs = []
     for x in rows:
         p0 = pv.get(x["team"], {}).get("playoffs", x["playoffs"])
-        status = ' <span class="chip pos">Clinched</span>' if x["playoffs"] >= 1 else (' <span class="chip neg">Out</span>' if x["playoffs"] <= 0 else "")
+        status = (' <span class="chip pos" title="Clinched a first-round bye">Clinched bye</span>' if x.get("clinched_bye")
+                  else ' <span class="chip pos" title="Clinched a playoff spot">Clinched playoffs</span>' if x.get("clinched")
+                  else ' <span class="chip neg" title="Eliminated from playoff contention">Eliminated</span>' if x.get("eliminated") else "")
         trs.append(f'<tr><td class="team" style="white-space:nowrap">{esc(x["team"])}{status}</td>'
                    f'<td class="muted" style="white-space:nowrap">{esc(div_names.get(x["division"], ""))}</td>'
                    f'<td class="n">{x["wins"]:.0f}-{x["losses"]:.0f}</td>'
@@ -831,7 +833,8 @@ def playoff_table(rows, prev, n_playoff, div_names):
             f'from its own scoring so far, pulled toward the league average early in the year. {n_playoff} teams make the playoffs: the top two '
             'in each division are in, the division winners get the byes, and the last spots go to the best remaining records as wild cards. '
             'Every tie goes to points for. “Worst record” is the chance of finishing with the league’s worst regular-season record. '
-            '“This week” is the change since last week’s results.</p>')
+            '“This week” is the change since last week’s results. Clinched and eliminated tags are mathematical, not simulated: '
+            'a clinch holds even if the team loses out, every rival wins out and every tie goes against it on points.</p>')
 
 
 def power_table(rows, prev_rank):
