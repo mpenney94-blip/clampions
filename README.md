@@ -55,10 +55,13 @@ workflow keeps their builds in the Actions cache and rebuilds them only when the
 ### Written columns
 
 The "week in review" and next-week "trash talk" sections are written from a fact sheet of each week's stats
-(`dashboard/commentary.py`). If the repository has an `ANTHROPIC_API_KEY` Actions secret, Claude writes them;
+(`dashboard/commentary.py`). If the repository has an `ANTHROPIC_API_KEY` Actions secret, Claude (Sonnet) writes them for the current season;
 otherwise a built-in writer fills in from canned lines.
 
 ### All-time tab
 
 Each season's build also writes a `summary.json` (record, points, finish, keepers, trades, best pickups and worst drops,
 keyed by Sleeper owner id so renamed teams stay together). The all-time page is built from those summaries.
+
+Written columns are cached in `.cache/commentary` and reused: recaps and previews of weeks already played never change,
+and the upcoming week's preview and the rivalry column are rewritten only on the scheduled and manual runs, not on code pushes.
