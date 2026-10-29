@@ -1197,7 +1197,7 @@ def alltime_sections(sums):
                  f'<p class="note">Regular-season games only, {seasons[-1]}–{seasons[0]}'
                  + (f' ({cur[0]["season"]} so far, through week {cur[0]["weeks"]})' if cur else "")
                  + '. Playoffs, titles, last places and best finish count finished seasons only. Last place = finished '
-                 f'{_ordinal(n_teams)}, losing out in the consolation bracket. Managers are tracked by Sleeper account, so team renames stay together; '
+                 f'{_ordinal(n_teams)}: lost every game in the toilet bowl. Managers are tracked by Sleeper account, so team renames stay together; '
                  'hover a name for its old team names.</p>')
 
     # finishes by year
@@ -1220,7 +1220,7 @@ def alltime_sections(sums):
             cells.append(f'<td class="w" style="background:var(--r{step});color:{fg};white-space:nowrap" title="{tip}">{label}</td>')
         ftrs.append(f'<tr><td>{who(r["o"])}</td>{"".join(cells)}</tr>')
     finishes = (f'<div class="panel scroll"><table class="grid-t"><thead><tr><th>Manager</th>{head}</tr></thead><tbody>{"".join(ftrs)}</tbody></table></div>'
-                '<p class="note">Final place each season: 1st–6th from the playoff bracket, 7th–12th from the consolation bracket; darker = better. The current season shows '
+                '<p class="note">Final place each season: 1st–6th from the playoff bracket, 7th–12th from the toilet bowl (lose every game there and you finish last); darker = better. The current season shows '
                 'its regular-season standing in italics. Hover a cell for the record and that year’s team name.</p>')
 
     # champions and last places
@@ -1231,7 +1231,7 @@ def alltime_sections(sums):
         ctrs.append(f'<tr><td class="team">{x["season"]}</td><td>🏆 {cell(1)}</td><td>{cell(2)}</td><td>💩 {cell(n_teams)}</td></tr>')
     champs = (f'<div class="panel scroll"><table><thead><tr><th>Season</th><th>Champion</th><th>Runner-up</th><th>Last place</th></tr></thead>'
               f'<tbody>{"".join(ctrs)}</tbody></table></div>'
-              '<p class="note">Team names as they were that season. Last place = finished last in the consolation bracket.</p>') if ctrs else '<div class="panel muted">No finished seasons yet.</div>'
+              '<p class="note">Team names as they were that season. Last place = lost every game in the toilet bowl.</p>') if ctrs else '<div class="panel muted">No finished seasons yet.</div>'
 
     # keepers
     keepers = sorted((dict(k, season=x["season"]) for x in sums for k in x["keepers"]), key=lambda k: -k["value"])

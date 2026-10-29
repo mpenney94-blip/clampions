@@ -514,12 +514,27 @@ def recap(lg, w):
 
 # ---------------------------------------------------------------- season summary (feeds the all-time page)
 def _finishes(lg):
-    """roster_id -> final place from Sleeper's winners and consolation brackets."""
-    place = {}
-    for name, offset in (("winners_bracket", 0), ("losers_bracket", lg.playoff_teams)):
-        for m in winprob._fetch(f"https://api.sleeper.app/v1/league/{lg.id}/{name}") or []:
-            if m.get("p") and m.get("w") and m.get("l"):
-                place[m["w"]], place[m["l"]] = offset + m["p"], offset + m["p"] + 1
+    """roster_id -> final place from Sleeper's winners and consolation brackets.
+
+    The consolation bracket can be a toilet bowl, where the loser of each game moves on and the team that loses
+    every game finishes last. Sleeper still records the team that moves on as "w", so the real scores decide
+    which way the bracket runs."""
+    place, n = {}, len(lg.team)
+    for m in winprob._fetch(f"https://api.sleeper.app/v1/league/{lg.id}/winners_bracket") or []:
+        if m.get("p") and m.get("w") and m.get("l"):
+            place[m["w"]], place[m["l"]] = m["p"], m["p"] + 1
+    losers = [m for m in winprob._fetch(f"https://api.sleeper.app/v1/league/{lg.id}/losers_bracket") or [] if m.get("w") and m.get("l")]
+    toilet = False
+    if losers and lg.playoff_start:
+        m = min(losers, key=lambda m: m["r"])
+        sc = {x["roster_id"]: x["points"] or 0.0 for x in lg.client.matchups(lg.id, lg.playoff_start + m["r"] - 1)}
+        toilet = sc.get(m["w"], 0) < sc.get(m["l"], 0)  # the team that moved on lost the game
+    for m in losers:
+        if m.get("p"):
+            if toilet:  # p=1 is the toilet bowl final: whoever moved on (lost it) is last
+                place[m["w"]], place[m["l"]] = n - m["p"] + 1, n - m["p"]
+            else:
+                place[m["w"]], place[m["l"]] = lg.playoff_teams + m["p"], lg.playoff_teams + m["p"] + 1
     return place
 
 
