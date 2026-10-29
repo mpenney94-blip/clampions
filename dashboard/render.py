@@ -1108,3 +1108,30 @@ def season_tabs(tabs, current, root):
     return ('<nav class="seasons" aria-label="Seasons">'
             + "".join(f'<a href="{root}{path}"{" aria-current=page" if label == current else ""}>{esc(label)}</a>' for label, path in tabs)
             + '</nav>')
+
+
+def drop_table(rows):
+    if not rows:
+        return '<div class="panel muted">No regrettable drops yet. Give it time.</div>'
+    mx = max(x["after"] for x in rows) or 1
+    ppg = lambda pts, g: f"{pts / g:.1f}" if g else "—"
+    trs = []
+    for i, x in enumerate(rows, 1):
+        went = x["now"] or (x["kept_by"][-1] if x["kept_by"] else None)
+        where = (f'now on <b>{esc(x["now"])}</b>' if x["now"] else f'was on {esc(went)}, now a free agent' if went else "still a free agent")
+        if x["readded"]:
+            where += ' · <span class="muted">re-added later</span>'
+        hurt = f'<div class="neg" style="font-size:12px">{x["started_elsewhere"]:.1f} pts in other teams’ lineups</div>' if x["started_elsewhere"] >= 1 else ""
+        trs.append(f'<tr><td class="muted">{i}</td><td><b>{esc(x["player"])}</b> <span class="muted">{x["pos"] or ""}</span>'
+                   f'<div style="font-size:12.5px">{where}</div></td>'
+                   f'<td class="team" style="white-space:nowrap">{esc(x["team"])}<div class="muted" style="font-size:12px;font-weight:400">before week {x["week"]}</div></td>'
+                   f'<td class="n">{x["before"]:.1f}<div class="muted" style="font-size:12px;white-space:nowrap">{x["before_games"]} g · {ppg(x["before"], x["before_games"])}/g</div></td>'
+                   f'<td class="barcell"><div class="track"><span style="width:{100 * x["after"] / mx:.1f}%;background:var(--bad)"></span></div>{hurt}</td>'
+                   f'<td class="n team">{x["after"]:.1f}<div class="muted" style="font-size:12px;font-weight:400;white-space:nowrap">{x["after_games"]} g · {ppg(x["after"], x["after_games"])}/g</div></td>'
+                   f'<td class="n">{x["best"][0]:.1f}<div class="muted" style="font-size:12px">wk {x["best"][1]}</div></td></tr>')
+    return (f'<div class="panel scroll"><table><thead><tr><th></th><th>Player</th><th>Dropped by</th><th class="n">With them</th>'
+            f'<th class="barcell">Points since the drop</th><th class="n">Since</th><th class="n">Best game</th></tr></thead>'
+            f'<tbody>{"".join(trs)}</tbody></table></div>'
+            '<p class="note">The players whose drops have aged worst, ranked by fantasy points scored since the team let them go '
+            '(wherever they landed, including weeks on waivers). “With them” is what he scored for that team in games he played before the drop. '
+            'If the team picked him back up, the count stops there. Kickers and defenses are left out, since streaming them is the plan.</p>')

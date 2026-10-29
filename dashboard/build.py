@@ -255,6 +255,8 @@ def build(league_id, out, with_winprob=True, tabs=""):
                         + render.waiver_wars(*stats.waiver_wars(lg), sorted(lg.team.values(), key=str.lower))),
         "overbids": ("Waiver overbids", '<p class="lede">How much FAAB each team spent beyond what it took to win, and how often its claims came through.</p>'
                      + render.overbid_table(stats.waiver_bids(lg), lg.info["settings"].get("waiver_budget", 100))),
+        "drops": ("Drops that came back to bite", '<p class="lede">The worst cuts of the season: players who went on to produce after their team let them go.</p>'
+                  + render.drop_table(stats.drop_regrets(lg))),
         "position": ("Position strength", render.position_table(*weekly.position_strength(lg))),
         "sources": ("Drafted vs. picked up", render.source_bars(src)),
         "draft": ("Draft report card", draft_chart(lg)),
@@ -266,7 +268,7 @@ def build(league_id, out, with_winprob=True, tabs=""):
         ("scoring", "Scoring", f"Weeks 1–{last}: how many points every team put up, how lucky it was, and where the points came from.",
          ["standings", "trends", "projections", "close", "schedule", "carry", "boom-bust", "team-grid"]),
         ("roster", "Roster", "Trades, byes, injuries, lineup calls and the waiver wire.",
-         ["trades", "byes", "injuries", "bench", "waivers", "waiver-wars", "overbids", "position"]),
+         ["trades", "byes", "injuries", "bench", "waivers", "waiver-wars", "overbids", "drops", "position"]),
         ("draft-group", "Draft", "How the draft played out, and how much each team still leans on it.",
          ["sources", "draft", "rounds"]),
     ]
