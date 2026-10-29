@@ -34,10 +34,15 @@ header.site{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:spa
 h1{font:700 clamp(32px,6vw,48px)/1.05 var(--display);margin:4px 0}
 h2{font:700 28px/1.1 var(--display);margin:0 0 4px;text-wrap:balance}
 h3{font:600 20px/1.2 var(--display);margin:0 0 6px}
-nav.toc{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 28px}
-nav.toc a{font:600 14px var(--display);letter-spacing:.06em;text-transform:uppercase;text-decoration:none;color:var(--ink2);
- border:1px solid var(--rule);background:var(--surface);border-radius:999px;padding:6px 12px}
-nav.toc a:hover{border-color:var(--ink3)}
+nav.toc{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(160px,45%),1fr));gap:10px;margin:14px 0 28px}
+@media (max-width:520px){nav.toc .grp{padding:10px 10px 8px}nav.toc .grp>a{font-size:14px;padding:3px 0}}
+nav.toc .grp{background:var(--surface);border:1px solid var(--rule);border-radius:10px;padding:12px 14px 10px}
+nav.toc .grp>span{display:block;font:700 13px var(--display);letter-spacing:.1em;text-transform:uppercase;color:var(--a);
+ padding-bottom:6px;margin-bottom:6px;border-bottom:1px solid var(--rule)}
+nav.toc .grp>a{display:block;font-size:15px;line-height:1.35;color:var(--ink);text-decoration:none;padding:4px 0;break-inside:avoid}
+nav.toc .grp>a:hover{color:var(--a);text-decoration:underline;text-underline-offset:3px}
+nav.toc .grp:only-child{grid-column:1/-1;columns:200px}
+nav.toc .grp:only-child>span{column-span:all}
 section{margin-top:44px;scroll-margin-top:16px}
 .lede{color:var(--ink2);max-width:72ch;margin:0 0 14px}
 .panel{background:var(--surface);border:1px solid var(--rule);border-radius:10px;padding:16px 18px}
@@ -147,8 +152,6 @@ svg .hit{cursor:crosshair}
 .group-head{margin-top:56px;padding:14px 0 6px;border-bottom:3px solid var(--ink)}
 .group-head h2{font-size:36px;margin:0}
 .group-head p{margin:4px 0 0;color:var(--ink2)}
-nav.toc .grp{display:flex;flex-wrap:wrap;gap:6px;align-items:center;width:100%}
-nav.toc .grp>span{font:700 13px var(--display);letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);min-width:92px}
 footer{margin-top:56px;color:var(--ink3);font-size:14px;border-top:1px solid var(--rule);padding-top:16px}
 """
 
