@@ -208,7 +208,8 @@ def week_hub(lg, w, with_winprob, wp_cache, odds, div_names):
     if more:
         out += [("playoffs", "Playoff odds", render.playoff_table(po(w), po(w - 1), lg.playoff_teams, div_names)),
                 ("preview", f"Week {w + 1} preview", render.preview_cards(weekly.preview(lg, w + 1), w + 1)),
-                ("lookahead", f"Week {w + 1} trash talk", render.column(*commentary.write("preview", commentary.preview_facts(lg, w + 1, po(w)), not lg.complete)))]
+                ("lookahead", f"Week {w + 1} trash talk", render.column(*commentary.write("preview", commentary.preview_facts(lg, w + 1, po(w)), not lg.complete,
+                                                                                                   final=w + 1 <= lg.weeks[-1])))]
     return out
 
 

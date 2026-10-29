@@ -781,7 +781,7 @@ document.querySelectorAll('table.sortable').forEach(function (t) {
   function val(row, i) {
     var c = row.cells[i], v = c.hasAttribute('data-v') ? c.getAttribute('data-v') : c.textContent.replace(/[$,%]/g, '').trim();
     var n = parseFloat(v);
-    return isNaN(n) || !/^-?[\d.]/.test(v) ? v.toLowerCase() : n;
+    return isNaN(n) || !/^-?[\\d.]/.test(v) ? v.toLowerCase() : n;
   }
   Array.prototype.forEach.call(ths, function (th, i) {
     th.setAttribute('tabindex', '0');

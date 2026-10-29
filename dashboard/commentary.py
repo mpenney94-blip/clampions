@@ -16,7 +16,7 @@ import re
 from dashboard import weekly
 from dashboard.stats import _optimal
 
-MODEL = "claude-opus-5-5"
+MODEL = "claude-sonnet-5-5"
 CACHE = os.environ.get("COMMENTARY_CACHE", os.path.join(".cache", "commentary"))  # Claude's columns, keyed by their facts
 
 
@@ -285,16 +285,21 @@ def _rivalry_lines(f, rnd):
     return out
 
 
-def write(kind, facts, use_claude=True):
-    """Paragraphs of HTML for 'recap' or 'preview', plus who wrote them. use_claude=False sticks to the built-in writer."""
+def write(kind, facts, use_claude=True, final=False):
+    """Paragraphs of HTML for 'recap', 'preview' or 'rivalry', plus who wrote them. use_claude=False sticks to the built-in writer.
+
+    Columns cost money to write, so once one exists it is reused unless there's a reason to redo it: a recap, or a
+    preview whose week has been played (final=True), never changes again; the live preview and the rivalry column are
+    rewritten only when COMMENTARY_REFRESH=1 (the scheduled Tuesday/Thursday runs and manual runs), not on code pushes."""
     if not facts:
         return None, None
     key = hashlib.sha256(json.dumps([MODEL, SYSTEM, kind, facts], sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:24]
     path = os.path.join(CACHE, f"{kind}-{facts['week']}-{key}.json")
     paras = None
-    if use_claude and kind == "recap" and not os.path.exists(path):
-        # a week's recap is written once, on the first build after its games, and kept from then on: later builds
-        # (Thursday's stat corrections) leave it alone. Only Claude-written seasons are cached, so no other season matches.
+    keep = kind == "recap" or final or os.environ.get("COMMENTARY_REFRESH") != "1"
+    if use_claude and keep and not os.path.exists(path):
+        # reuse the latest column written for this week, even if the stats behind it have shifted since.
+        # Only Claude-written seasons are cached, so no other season matches.
         done = sorted(glob.glob(os.path.join(CACHE, f"{kind}-{facts['week']}-*.json")), key=os.path.getmtime)
         if done:
             path = done[-1]
