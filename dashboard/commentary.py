@@ -5,6 +5,7 @@ otherwise (or if the call fails) a built-in writer does, picking from canned lin
 """
 
 import collections
+import hashlib
 import html
 import json
 import os
@@ -15,6 +16,7 @@ from dashboard import weekly
 from dashboard.stats import _optimal
 
 MODEL = "claude-opus-5-5"
+CACHE = os.environ.get("COMMENTARY_CACHE", os.path.join(".cache", "commentary"))  # Claude's columns, keyed by their facts
 
 
 # ---------------------------------------------------------------- fact sheets
@@ -94,11 +96,14 @@ def week_facts(lg, w, wp=None, odds_now=None, odds_prev=None):
 
 
 def preview_facts(lg, w, odds=None, min_ppg=8.0):
+    """Facts for week w's look-ahead, as things stood after week w - 1 (rosters that week; injury news only for the real next week)."""
     games = weekly.preview(lg, w)
     if not games:
         return None
     ppg = weekly._ppg(lg)
-    rec, streak = _records(lg, lg.weeks[-1])
+    rec, streak = _records(lg, w - 1)
+    upcoming = w >= lg.next_week
+    roster = (lg.roster_now if upcoming else {m["roster_id"]: set(m.get("players") or []) for m in lg.matchups_for(w)})
     rid = {n: r for r, n in lg.team.items()}
     od = {x["team"]: x for x in odds or []}
     standing = {x["team"]: i for i, x in enumerate(sorted(odds or [], key=lambda x: (-x["wins"], -x["pf"])), 1)}
@@ -106,12 +111,12 @@ def preview_facts(lg, w, odds=None, min_ppg=8.0):
     def trouble(team):
         r = rid[team]
         byes, hurt = [], []
-        for p in lg.roster_now.get(r, ()):
+        for p in roster.get(r, ()):
             if ppg.get(p, 0) < min_ppg:
                 continue
-            if weekly._nfl_team(lg, p) in lg.bye.get(w, set()):
+            if weekly._nfl_team(lg, p, None if upcoming else w) in lg.bye.get(w, set()):
                 byes.append(f"{lg.name_of(p)} ({ppg[p]:.1f}/gm)")
-            st = (lg.players.get(p) or {}).get("injury_status")
+            st = (lg.players.get(p) or {}).get("injury_status") if upcoming else None  # today's injury report means nothing for old weeks
             if st in ("Out", "IR", "Doubtful", "Questionable", "PUP", "Sus"):
                 hurt.append(f"{lg.name_of(p)} ({st}, {ppg[p]:.1f}/gm)")
         return byes, hurt
@@ -248,7 +253,8 @@ def _preview_lines(f, rnd):
     empty = [s for s in sides if s["empty_lineup_slots"]]
     if empty:
         s = empty[0]
-        out.append(f"{_b(s['team'])} is currently starting {', '.join(s['empty_lineup_slots'][:2])}, who is projected for zero. Bold strategy.")
+        who = s["empty_lineup_slots"][:2]
+        out.append(f"{_b(s['team'])} has {' and '.join(who)} in the starting lineup, projected for zero. Bold strategy.")
     bubble = sorted((s for s in sides if 25 <= s["playoff_odds"] <= 75), key=lambda s: abs(s["playoff_odds"] - 50))
     if bubble:
         s = bubble[0]
@@ -264,7 +270,19 @@ def write(kind, facts):
     """Paragraphs of HTML for 'recap' or 'preview', plus who wrote them."""
     if not facts:
         return None, None
-    paras, by = _claude(kind, facts), "Claude"
+    key = hashlib.sha256(json.dumps([MODEL, SYSTEM, kind, facts], sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:24]
+    path = os.path.join(CACHE, f"{kind}-{facts['week']}-{key}.json")
+    paras = None
+    if os.path.exists(path):
+        with open(path) as f:
+            paras = json.load(f)
+    else:
+        paras = _claude(kind, facts)
+        if paras:
+            os.makedirs(CACHE, exist_ok=True)
+            with open(path, "w") as f:
+                json.dump(paras, f)
+    by = "Claude"
     if not paras:
         rnd = random.Random(f"{kind}-{facts['week']}")
         paras, by = (_recap_lines if kind == "recap" else _preview_lines)(facts, rnd), "the robot"

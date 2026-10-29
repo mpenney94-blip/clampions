@@ -185,6 +185,31 @@ def boom_bust_chart(lg):
             'Right = scores more; higher = less predictable. Bigger dots = more starts. ★ = keeper.</p>')
 
 
+def week_hub(lg, w, with_winprob, wp_cache, odds, div_names):
+    """The week-specific sections for week w: [(key, title, html)], each as things stood right after that week."""
+    def po(x):
+        if x not in odds:
+            odds[x] = weekly.playoff_odds(lg, x) if x in lg.weeks else []
+        return odds[x]
+    wp = None
+    if with_winprob:
+        wp_html = winprob_section(lg, w, wp_cache)
+        wp = wp_cache.get(w)
+    more = lg.reg_weeks and w < lg.reg_weeks[-1]
+    pw_prev = {x["team"]: x["rank"] for x in weekly.power(lg, w - 1)} if w - 1 in lg.weeks else {}
+    out = [("recap", f"Week {w} recap", render.recap_tiles(stats.recap(lg, w))),
+           ("awards", f"Week {w} awards", render.awards_tiles(weekly.awards(lg, w, wp), w)),
+           ("column", "The week in review", render.column(*commentary.write("recap", commentary.week_facts(lg, w, wp, po(w), po(w - 1)))))]
+    if with_winprob:
+        out.append(("winprob", f"Week {w} win probability", wp_html))
+    out.append(("power", "Power rankings", render.power_table(weekly.power(lg, w), pw_prev)))
+    if more:
+        out += [("playoffs", "Playoff odds", render.playoff_table(po(w), po(w - 1), lg.playoff_teams, div_names)),
+                ("preview", f"Week {w + 1} preview", render.preview_cards(weekly.preview(lg, w + 1), w + 1)),
+                ("lookahead", f"Week {w + 1} trash talk", render.column(*commentary.write("preview", commentary.preview_facts(lg, w + 1, po(w)))))]
+    return out
+
+
 def build(league_id, out, with_winprob=True, tabs=""):
     lg = stats.League(league_id)
     now = dt.datetime.now(dt.timezone.utc)
@@ -202,27 +227,14 @@ def build(league_id, out, with_winprob=True, tabs=""):
     week_links = " ".join(f'<a href="weeks/{w}.html">Week {w}</a>' for w in reversed(lg.weeks))
 
     # week-to-week hub
-    wp_last = None
-    if with_winprob:
-        winprob_html = winprob_section(lg, last, wp_cache)
-        wp_last = wp_cache.get(last)
     meta = lg.info.get("metadata") or {}
     div_names = {int(k.split("_")[1]): v for k, v in meta.items() if k.startswith("division_") and k.split("_")[1].isdigit()}
-    po_now, po_prev = weekly.playoff_odds(lg), (weekly.playoff_odds(lg, last - 1) if len(lg.weeks) > 1 else [])
-    pw_prev = {x["team"]: x["rank"] for x in weekly.power(lg, last - 1)} if len(lg.weeks) > 1 else {}
+    odds = {}
+    hub = week_hub(lg, last, with_winprob, wp_cache, odds, div_names)
     proj_rows, proj_over, proj_under = weekly.vs_projection(lg)
     tr_rows, tr_league = weekly.trends(lg)
-    more_games = lg.reg_weeks and last < lg.reg_weeks[-1]
-    S = {
-        "recap": (f"Week {last} recap", render.recap_tiles(stats.recap(lg, last))),
-        "awards": (f"Week {last} awards", render.awards_tiles(weekly.awards(lg, last, wp_last), last)),
-        "winprob": (f"Week {last} win probability", winprob_html) if with_winprob else None,
-        "column": ("The week in review", render.column(*commentary.write("recap", commentary.week_facts(lg, last, wp_last, po_now, po_prev)))),
-        "power": ("Power rankings", render.power_table(weekly.power(lg), pw_prev)),
-        "playoffs": ("Playoff odds", render.playoff_table(po_now, po_prev, lg.playoff_teams, div_names)) if more_games else None,
-        "preview": (f"Week {lg.next_week} preview", render.preview_cards(weekly.preview(lg, lg.next_week), lg.next_week)) if more_games else None,
-        "lookahead": (f"Week {lg.next_week} trash talk", render.column(*commentary.write("preview", commentary.preview_facts(lg, lg.next_week, po_now))))
-        if more_games else None,
+    S = {k: (t, h) for k, t, h in hub}
+    S.update({
         "history": ("Past weeks", f'<div class="panel">{week_links}</div>'),
         "standings": ("All-play standings", '<p class="lede">How each team would stand if everyone played everyone every week, next to their real record.</p>' + render.allplay_table(ap, lg.weeks)),
         "trends": ("Scoring trends", render.trend_cards(tr_rows, tr_league, lg.weeks)),
@@ -247,10 +259,10 @@ def build(league_id, out, with_winprob=True, tabs=""):
         "sources": ("Drafted vs. picked up", render.source_bars(src)),
         "draft": ("Draft report card", draft_chart(lg)),
         "rounds": ("Points by draft round", render.round_table(src, max((p["round"] for p in lg.picks), default=0))),
-    }
+    })
     groups = [
         ("this-week", "This week", f"What happened in week {last} and what’s coming next. These change every week.",
-         ["recap", "awards", "column", "winprob", "power", "playoffs", "preview", "lookahead", "history"]),
+         [k for k, _, _ in hub] + ["history"]),
         ("scoring", "Scoring", f"Weeks 1–{last}: how many points every team put up, how lucky it was, and where the points came from.",
          ["standings", "trends", "projections", "close", "schedule", "carry", "boom-bust", "team-grid"]),
         ("roster", "Roster", "Trades, byes, injuries, lineup calls and the waiver wire.",
@@ -258,7 +270,7 @@ def build(league_id, out, with_winprob=True, tabs=""):
         ("draft-group", "Draft", "How the draft played out, and how much each team still leans on it.",
          ["sources", "draft", "rounds"]),
     ]
-    groups = [(gid, name, blurb, [k for k in keys if S[k]]) for gid, name, blurb, keys in groups]
+    groups = [(gid, name, blurb, [k for k in keys if S.get(k)]) for gid, name, blurb, keys in groups]
     toc = ('<nav class="toc" aria-label="Sections">'
            + "".join(f'<div class="grp"><span><a href="#{gid}" style="all:unset;cursor:pointer">{name}</a></span>'
                      + "".join(f'<a href="#{k}">{esc(S[k][0])}</a>' for k in keys) + '</div>' for gid, name, _, keys in groups)
@@ -272,10 +284,18 @@ def build(league_id, out, with_winprob=True, tabs=""):
     with open(os.path.join(out, "index.html"), "w") as f:
         f.write(render.page(f"{lg.name} dashboard", body, f"{lg.name} {lg.season}: all-play standings, win probability, schedule swap, bench, waivers, trades and draft."))
     for w in lg.weeks:
-        parts = [f'<p><a href="../index.html">← {esc(lg.name)} dashboard</a></p><div class="eyebrow">{lg.season} season</div><h1>Week {w}</h1>',
-                 f'<section><h2>Recap</h2>{render.recap_tiles(stats.recap(lg, w))}</section>']
-        if with_winprob:
-            parts.append(f'<section><h2>Win probability</h2>{winprob_section(lg, w, wp_cache)}</section>')
+        parts = [f'<p><a href="../index.html">← {esc(lg.name)} dashboard</a></p><div class="eyebrow">{lg.season} season</div><h1>Week {w}</h1>']
+        if lg.complete:  # finished seasons keep the short week pages
+            parts.append(f'<section><h2>Recap</h2>{render.recap_tiles(stats.recap(lg, w))}</section>')
+            if with_winprob:
+                parts.append(f'<section><h2>Win probability</h2>{winprob_section(lg, w, wp_cache)}</section>')
+        else:
+            secs = hub if w == last else week_hub(lg, w, with_winprob, wp_cache, odds, div_names)
+            nav = " ".join(f'<a href="{w2}.html">Week {w2}</a>' if w2 != w else f'<b>Week {w2}</b>' for w2 in lg.weeks)
+            parts.append(f'<nav class="toc" aria-label="Sections"><div class="grp"><span>Week {w}</span>'
+                         + "".join(f'<a href="#{k}">{esc(t)}</a>' for k, t, _ in secs) + '</div></nav>'
+                         + "".join(f'<section id="{k}"><h2>{esc(t)}</h2>{h}</section>' for k, t, h in secs)
+                         + f'<section><h2>Other weeks</h2><div class="panel">{nav}</div></section>')
         parts.append(render.footer(now) + render.HIGHLIGHT_JS)
         with open(os.path.join(out, "weeks", f"{w}.html"), "w") as f:
             f.write(render.page(f"{lg.name} · Week {w}", "".join(parts)))
