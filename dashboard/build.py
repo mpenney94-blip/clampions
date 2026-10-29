@@ -6,6 +6,7 @@ Usage: python3 -m dashboard.build <league_id> [--out _site] [--no-winprob] [--pa
 import argparse
 import concurrent.futures
 import datetime as dt
+import json
 import math
 import os
 import random
@@ -302,6 +303,8 @@ def build(league_id, out, with_winprob=True, tabs=""):
         parts.append(render.footer(now) + render.HIGHLIGHT_JS)
         with open(os.path.join(out, "weeks", f"{w}.html"), "w") as f:
             f.write(render.page(f"{lg.name} · Week {w}", "".join(parts)))
+    with open(os.path.join(out, "summary.json"), "w") as f:  # this season's totals, for the all-time page
+        json.dump(stats.season_summary(lg), f)
     with open(os.path.join(out, ".nojekyll"), "w"):
         pass
     print(f"built {lg.name} through week {last} -> {out}")
@@ -317,10 +320,15 @@ def seasons(league_id):
     return out
 
 
-def alltime_page(name, tabs):
-    body = (f'{tabs}<header class="site"><div><div class="eyebrow">Every season on Sleeper</div><h1>{esc(name)}: all-time</h1></div></header>'
-            '<div class="panel muted">All-time stats are coming soon.</div>')
-    return render.page(f"{name} all-time", body)
+def alltime_page(name, tabs, sums):
+    secs = render.alltime_sections(sums)
+    toc = ('<nav class="toc" aria-label="Sections"><div class="grp"><span>All-time</span>'
+           + "".join(f'<a href="#{k}">{esc(t)}</a>' for k, t, _ in secs) + '</div></nav>')
+    body = (f'{tabs}<header class="site"><div><div class="eyebrow">{sums[-1]["season"]}–{sums[0]["season"]} on Sleeper</div>'
+            f'<h1>{esc(name)}: all-time</h1></div></header>{toc}'
+            + "".join(f'<section id="{k}"><h2>{esc(t)}</h2>{h}</section>' for k, t, h in secs)
+            + render.footer(dt.datetime.now(dt.timezone.utc)) + render.HIGHLIGHT_JS)
+    return render.page(f"{name} all-time", body, f"{name}: all-time standings, finishes, champions, keepers, trades, pickups and drops.")
 
 
 def build_all(league_id, out, with_winprob=True, past_cache=None, only=None):
@@ -354,7 +362,13 @@ def build_all(league_id, out, with_winprob=True, past_cache=None, only=None):
     name = stats.SleeperClient().league(league_id)["name"]
     os.makedirs(os.path.join(out, "alltime"), exist_ok=True)
     with open(os.path.join(out, "alltime", "index.html"), "w") as f:
-        f.write(alltime_page(name, render.season_tabs(tab_list, "All-time", "../")))
+        sums = []
+        for i, (_, season) in enumerate(chain):
+            path = os.path.join(out, "summary.json") if i == 0 else os.path.join(out, season, "summary.json")
+            if os.path.exists(path):
+                with open(path) as sf:
+                    sums.append(json.load(sf))
+        f.write(alltime_page(name, render.season_tabs(tab_list, "All-time", "../"), sums))
 
 
 def main():

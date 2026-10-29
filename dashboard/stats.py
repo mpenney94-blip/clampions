@@ -30,11 +30,12 @@ class League:
         self.weeks = list(range(st_.get("start_week", 1), last + 1))
         self.complete = self.info.get("status") == "complete"
         users = {u["user_id"]: u for u in c.league_users(league_id)}
-        self.team, self.roster_now, self.division = {}, {}, {}
+        self.team, self.roster_now, self.division, self.owner = {}, {}, {}, {}
         for r in c.rosters(league_id):
             self.roster_now[r["roster_id"]] = set(r.get("players") or [])
             self.division[r["roster_id"]] = (r.get("settings") or {}).get("division")
             u = users.get(r["owner_id"]) or {}
+            self.owner[r["roster_id"]] = r.get("owner_id") or f"roster-{r['roster_id']}"  # the manager, which outlives team names
             self.team[r["roster_id"]] = (u.get("metadata") or {}).get("team_name") or u.get("display_name") or f"Team {r['roster_id']}"
         self.players = c.players()
         self.matchups = {w: c.matchups(league_id, w) for w in self.weeks}
@@ -509,3 +510,59 @@ def recap(lg, w):
     return {"week": w, "games": gl, "high": (lg.team[hi], sc[hi]), "low": (lg.team[lo], sc[lo]),
             "closest": min(gl, key=lambda g: g["margin"]), "blowout": max(gl, key=lambda g: g["margin"]),
             "median": st.median(sc.values())}
+
+
+# ---------------------------------------------------------------- season summary (feeds the all-time page)
+def _finishes(lg):
+    """roster_id -> final place from Sleeper's winners and consolation brackets."""
+    place = {}
+    for name, offset in (("winners_bracket", 0), ("losers_bracket", lg.playoff_teams)):
+        for m in winprob._fetch(f"https://api.sleeper.app/v1/league/{lg.id}/{name}") or []:
+            if m.get("p") and m.get("w") and m.get("l"):
+                place[m["w"]], place[m["l"]] = offset + m["p"], offset + m["p"] + 1
+    return place
+
+
+def season_summary(lg):
+    """Everything the all-time page needs from one season, keyed by manager (Sleeper owner id), as plain JSON."""
+    rec = {r: [0, 0, 0] for r in lg.team}
+    pf, pa = collections.Counter(), collections.Counter()
+    for w in lg.weeks:
+        sc, opp = lg.scores(w), lg.opponent(w)
+        for r, o in opp.items():
+            rec[r][_result(sc[r], sc[o])] += 1
+            pf[r] += sc[r]
+            pa[r] += sc[o]
+    reg_rank = {r: i for i, r in enumerate(sorted(lg.team, key=lambda r: (-(rec[r][0] + rec[r][2] / 2), -pf[r])), 1)}
+    finish = _finishes(lg) if lg.complete else {}
+    in_playoffs = set()
+    if lg.complete:
+        for m in winprob._fetch(f"https://api.sleeper.app/v1/league/{lg.id}/winners_bracket") or []:
+            in_playoffs |= {m.get("t1"), m.get("t2")} - {None}
+    own = lg.owner
+    if lg.complete:  # playoff teams place by the bracket; everyone else by regular-season standing (consolation games are noise)
+        out_ = sorted((r for r in lg.team if r not in in_playoffs), key=lambda r: reg_rank[r])
+        finish = {r: finish[r] for r in in_playoffs if r in finish}
+        finish.update({r: len(in_playoffs) + i for i, r in enumerate(out_, 1)})
+    teams = {own[r]: {"team": lg.team[r], "wins": rec[r][0], "losses": rec[r][1], "ties": rec[r][2],
+                      "pf": round(pf[r], 2), "pa": round(pa[r], 2), "reg_rank": reg_rank[r],
+                      "playoffs": (r in in_playoffs) if lg.complete else None,
+                      "finish": finish.get(r) if lg.complete else None} for r in lg.team}
+    by_name = {n: own[r] for r, n in lg.team.items()}
+    keepers = [{"player": z["player"], "pos": z["pos"], "owner": by_name.get(z["team"]), "team": z["team"], "round": z["round"],
+                "pick": z["pick"], "pts": round(z["pts"], 1), "value": round(z["value"], 1)} for z in draft(lg) if z["keeper"]]
+    trade_rows = []
+    for t in trades(lg):
+        sides = [{"owner": by_name.get(sd["team"]), "team": sd["team"], "total": round(sd["total"], 1), "picks": sd["picks"],
+                  "got": [{"player": g["player"], "pos": g["pos"], "since": round(g["since"], 1)} for g in sd["got"]]} for sd in t["sides"]]
+        trade_rows.append({"week": t["weeks"][0] if t["weeks"] else None, "sides": sides})
+    pickups_ = sorted((a for a in pickups(lg) if a["pos"] not in ("K", "DEF")), key=lambda a: -a["total"])[:15]
+    return {
+        "season": lg.season, "complete": lg.complete, "weeks": len(lg.weeks), "playoff_teams": lg.playoff_teams, "teams": teams,
+        "keepers": keepers, "trades": trade_rows,
+        "pickups": [{"player": a["player"], "pos": a["pos"], "owner": by_name.get(a["team"]), "team": a["team"], "bid": a["bid"],
+                     "games": a["games"], "total": round(a["total"], 1)} for a in pickups_],
+        "drops": [{"player": d["player"], "pos": d["pos"], "owner": by_name.get(d["team"]), "team": d["team"], "week": d["week"],
+                   "before": round(d["before"], 1), "after": round(d["after"], 1), "after_games": d["after_games"],
+                   "started_elsewhere": round(d["started_elsewhere"], 1)} for d in drop_regrets(lg, top=15)],
+    }
