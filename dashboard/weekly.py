@@ -339,6 +339,8 @@ HURT = {"IR": "injured reserve", "Out": "out", "PUP": "PUP list", "Doubtful": "d
 
 def dropped_hurt(lg, r, ppg, min_ppg=5.0):
     """Players team r cut who are still hurt and haven't played a down since."""
+    if lg.complete:  # injury status is today's, which says nothing about a finished season
+        return []
     out = {}
     for t in sorted(lg.transactions, key=lambda t: t["status_updated"]):
         if t["status"] != "complete":

@@ -1,13 +1,15 @@
 """Build the league dashboard as a static site.
 
-Usage: python3 -m dashboard.build <league_id> [--out _site] [--no-winprob]
+Usage: python3 -m dashboard.build <league_id> [--out _site] [--no-winprob] [--past-cache DIR] [--only SEASON ...]
 """
 
 import argparse
+import concurrent.futures
 import datetime as dt
 import math
 import os
 import random
+import shutil
 
 import winprob
 from dashboard import commentary, render, stats, weekly
@@ -183,12 +185,12 @@ def boom_bust_chart(lg):
             'Right = scores more; higher = less predictable. Bigger dots = more starts. ★ = keeper.</p>')
 
 
-def build(league_id, out, with_winprob=True):
+def build(league_id, out, with_winprob=True, tabs=""):
     lg = stats.League(league_id)
     now = dt.datetime.now(dt.timezone.utc)
     if not lg.weeks:
         os.makedirs(out, exist_ok=True)
-        open(os.path.join(out, "index.html"), "w").write(render.page(lg.name, f'<h1>{esc(lg.name)}</h1><p>No games scored yet this season.</p>'))
+        open(os.path.join(out, "index.html"), "w").write(render.page(lg.name, f'{tabs}<h1>{esc(lg.name)}</h1><p>No games scored yet this season.</p>'))
         return
     last = lg.weeks[-1]
     ap = stats.allplay(lg)
@@ -261,7 +263,8 @@ def build(league_id, out, with_winprob=True):
            + "".join(f'<div class="grp"><span><a href="#{gid}" style="all:unset;cursor:pointer">{name}</a></span>'
                      + "".join(f'<a href="#{k}">{esc(S[k][0])}</a>' for k in keys) + '</div>' for gid, name, _, keys in groups)
            + '</nav>')
-    body = (f'<header class="site"><div><div class="eyebrow">{lg.season} season · through week {last}</div><h1>{esc(lg.name)}</h1></div></header>{toc}'
+    when = (f"{lg.season} season · final" + (f" · 🏆 {esc(lg.champion)}" if lg.champion else "")) if lg.complete else f"{lg.season} season · through week {last}"
+    body = (f'{tabs}<header class="site"><div><div class="eyebrow">{when}</div><h1>{esc(lg.name)}</h1></div></header>{toc}'
             + "".join(f'<div class="group-head" id="{gid}"><h2>{name}</h2><p>{blurb}</p></div>'
                       + "".join(f'<section id="{k}"><h2>{esc(S[k][0])}</h2>{S[k][1]}</section>' for k in keys) for gid, name, blurb, keys in groups)
             + render.footer(now) + render.HIGHLIGHT_JS)
@@ -281,13 +284,65 @@ def build(league_id, out, with_winprob=True):
     print(f"built {lg.name} through week {last} -> {out}")
 
 
+def seasons(league_id):
+    """[(league_id, season)] from this league back through Sleeper's previous_league_id chain."""
+    out, c = [], stats.SleeperClient()
+    while league_id and league_id != "0":
+        info = c.league(league_id)
+        out.append((league_id, info["season"]))
+        league_id = info.get("previous_league_id")
+    return out
+
+
+def alltime_page(name, tabs):
+    body = (f'{tabs}<header class="site"><div><div class="eyebrow">Every season on Sleeper</div><h1>{esc(name)}: all-time</h1></div></header>'
+            '<div class="panel muted">All-time stats are coming soon.</div>')
+    return render.page(f"{name} all-time", body)
+
+
+def build_all(league_id, out, with_winprob=True, past_cache=None, only=None):
+    """The current season at the site root, each earlier season in /<season>/, and an all-time page in /alltime/.
+    Finished seasons don't change, so with past_cache they're built once into that folder and copied from it after."""
+    chain = seasons(league_id)
+    tab_list = [(s, "index.html" if i == 0 else f"{s}/index.html") for i, (_, s) in enumerate(chain)] + [("All-time", "alltime/index.html")]
+    jobs = []  # (league_id, folder to build into, tabs, folder to copy to afterwards)
+    for i, (lid, season) in enumerate(chain):
+        if only and season not in only:
+            continue
+        if i == 0:
+            jobs.append((lid, out, render.season_tabs(tab_list, season, ""), None))
+            continue
+        tabs, dest = render.season_tabs(tab_list, season, "../"), os.path.join(out, season)
+        if not past_cache:
+            jobs.append((lid, dest, tabs, None))
+        elif os.path.exists(os.path.join(past_cache, season, "index.html")):
+            print(f"{season}: using the cached build")
+            shutil.copytree(os.path.join(past_cache, season), dest, dirs_exist_ok=True)
+        else:
+            jobs.append((lid, os.path.join(past_cache, season), tabs, dest))
+    stats.SleeperClient().players()  # warm the shared players cache once, before the parallel builds
+    # seasons are independent and mostly wait on the network, so build them side by side
+    with concurrent.futures.ProcessPoolExecutor(max_workers=max(1, len(jobs))) as pool:
+        for f in [pool.submit(build, lid, folder, with_winprob, tabs) for lid, folder, tabs, _ in jobs]:
+            f.result()
+    for _, folder, _, dest in jobs:
+        if dest:
+            shutil.copytree(folder, dest, dirs_exist_ok=True)
+    name = stats.SleeperClient().league(league_id)["name"]
+    os.makedirs(os.path.join(out, "alltime"), exist_ok=True)
+    with open(os.path.join(out, "alltime", "index.html"), "w") as f:
+        f.write(alltime_page(name, render.season_tabs(tab_list, "All-time", "../")))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("league_id")
+    ap.add_argument("league_id", help="the current season's league; earlier seasons are found from it")
     ap.add_argument("--out", default="_site")
     ap.add_argument("--no-winprob", action="store_true", help="skip the slow ESPN play-by-play step")
+    ap.add_argument("--past-cache", help="folder that keeps finished seasons' builds between runs")
+    ap.add_argument("--only", nargs="*", help="build just these seasons (e.g. 2026 2025)")
     a = ap.parse_args()
-    build(a.league_id, a.out, not a.no_winprob)
+    build_all(a.league_id, a.out, not a.no_winprob, a.past_cache, set(a.only) if a.only else None)
 
 
 if __name__ == "__main__":

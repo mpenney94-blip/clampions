@@ -23,7 +23,12 @@ class League:
         self.season = self.info["season"]
         self.scoring = self.info["scoring_settings"]
         self.slots = [s for s in self.info["roster_positions"] if s not in ("BN", "IR", "TAXI")]
-        self.weeks = list(range(self.info["settings"].get("start_week", 1), self.info["settings"].get("last_scored_leg", 0) + 1))
+        st_ = self.info["settings"]
+        last = st_.get("last_scored_leg", 0)
+        if st_.get("playoff_week_start"):  # season stats cover the regular season; playoff weeks include teams with no game
+            last = min(last, st_["playoff_week_start"] - 1)
+        self.weeks = list(range(st_.get("start_week", 1), last + 1))
+        self.complete = self.info.get("status") == "complete"
         users = {u["user_id"]: u for u in c.league_users(league_id)}
         self.team, self.roster_now, self.division = {}, {}, {}
         for r in c.rosters(league_id):
@@ -58,6 +63,11 @@ class League:
         self.reg_weeks = list(range(st_.get("start_week", 1), self.playoff_start)) if self.playoff_start else self.weeks
         self.next_week = self.weeks[-1] + 1 if self.weeks else 1
         self._proj = {}
+        self.champion = None
+        if self.complete:
+            bracket = winprob._fetch(f"https://api.sleeper.app/v1/league/{league_id}/winners_bracket") or []
+            final = next((m for m in bracket if m.get("p") == 1 and m.get("w")), None)
+            self.champion = self.team.get(final["w"]) if final else None
         sched = winprob._fetch(f"https://api.sleeper.app/schedule/nfl/regular/{self.season}")
         all_teams = {t for g in sched for t in (g["home"], g["away"])}
         self.bye = {w: all_teams - {t for g in sched if g["week"] == w for t in (g["home"], g["away"])} for w in {g["week"] for g in sched}}

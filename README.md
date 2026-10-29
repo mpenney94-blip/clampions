@@ -43,9 +43,14 @@ python3 winprob.py <league_id> [--week N] [--out winprob.json]
 ```sh
 python3 -m dashboard.build <league_id> --out _site          # full build (about 2 minutes)
 python3 -m dashboard.build <league_id> --out _site --no-winprob   # quick build without win probability
+python3 -m dashboard.build <league_id> --out _site --only 2026      # just one season
 ```
 
 `.github/workflows/dashboard.yml` rebuilds and publishes it to GitHub Pages every Tuesday and Thursday, on pushes that change the dashboard code, and on demand from the Actions tab ("Run workflow"). Change `LEAGUE_ID` in that file to point it at a different league.
+
+`<league_id>` is the current season's league. Earlier seasons are found through Sleeper's `previous_league_id` chain and
+get their own tab (`/2025/`, `/2024/`, ...), next to an all-time tab (`/alltime/`). Finished seasons never change, so the
+workflow keeps their builds in the Actions cache and rebuilds them only when the dashboard code changes.
 
 ### Written columns
 

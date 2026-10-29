@@ -31,10 +31,16 @@ jobs:
           python-version: "3.12"
       - name: Install Anthropic SDK (for the written columns)
         run: pip install anthropic
+      - name: Restore finished seasons
+        uses: actions/cache@v4
+        with:
+          path: _past
+          # finished seasons never change, so they're rebuilt only when the code or the current league does
+          key: past-${{ env.LEAGUE_ID }}-${{ hashFiles('dashboard/**', 'winprob.py', 'sleeper.py') }}
       - name: Build site
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}  # optional: without it the built-in writer does the trash talk
-        run: python -m dashboard.build "$LEAGUE_ID" --out _site
+        run: python -m dashboard.build "$LEAGUE_ID" --out _site --past-cache _past
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

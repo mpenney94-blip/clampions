@@ -99,6 +99,10 @@ svg.hl-on text.star{opacity:.2}svg.hl-on text.star.sel{opacity:1}
 .grid-t td.bn{color:var(--ink3);font-weight:400;font-style:italic}
 .column p{margin:0 0 12px;font-size:17px;line-height:1.55;max-width:72ch}.column p:last-child{margin-bottom:0}
 .column p:first-child::first-letter{font:700 2.6em/0.9 var(--display);float:left;margin:4px 8px 0 0;color:var(--a)}
+nav.seasons{display:flex;flex-wrap:wrap;gap:4px;margin:0 0 18px;border-bottom:1px solid var(--rule)}
+nav.seasons a{font:600 15px var(--display);letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);text-decoration:none;padding:8px 14px;border-bottom:3px solid transparent;margin-bottom:-1px}
+nav.seasons a:hover{color:var(--ink)}
+nav.seasons a[aria-current="page"]{color:var(--a);border-bottom-color:var(--a)}
 table.expand tr.xrow{cursor:pointer}
 table.expand tr.xrow:hover td{background:var(--grid)}
 table.expand tr.xrow:focus-visible{outline:2px solid var(--a);outline-offset:-2px}
@@ -1097,3 +1101,10 @@ def column(paras, by):
     who = ("Written by Claude from this week’s stats." if by == "Claude" else "Written by the dashboard from this week’s stats.")
     return (f'<div class="panel column">{"".join(f"<p>{p}</p>" for p in paras)}</div>'
             f'<p class="note">{who} All in good fun; complaints can be filed with your waiver wire.</p>')
+
+
+def season_tabs(tabs, current, root):
+    """tabs: (label, path from the site root); root: relative path from this page to the site root."""
+    return ('<nav class="seasons" aria-label="Seasons">'
+            + "".join(f'<a href="{root}{path}"{" aria-current=page" if label == current else ""}>{esc(label)}</a>' for label, path in tabs)
+            + '</nav>')
