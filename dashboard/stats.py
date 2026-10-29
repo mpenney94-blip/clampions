@@ -556,10 +556,21 @@ def season_summary(lg):
         sides = [{"owner": by_name.get(sd["team"]), "team": sd["team"], "total": round(sd["total"], 1), "picks": sd["picks"],
                   "got": [{"player": g["player"], "pos": g["pos"], "since": round(g["since"], 1)} for g in sd["got"]]} for sd in t["sides"]]
         trade_rows.append({"week": t["weeks"][0] if t["weeks"] else None, "sides": sides})
+    games = []  # [week, owner, points, owner, points, playoff?] for head-to-head records
+    for w in lg.weeks:
+        sc = lg.scores(w)
+        for a, b in {tuple(sorted(pair)) for pair in lg.opponent(w).items()}:
+            games.append([w, own[a], round(sc[a], 2), own[b], round(sc[b], 2), False])
+    if lg.complete and lg.playoff_start:
+        for m in winprob._fetch(f"https://api.sleeper.app/v1/league/{lg.id}/winners_bracket") or []:
+            a, b, w = m.get("t1"), m.get("t2"), lg.playoff_start + m["r"] - 1
+            if a and b:
+                sc = {x["roster_id"]: x["points"] or 0.0 for x in lg.client.matchups(lg.id, w)}
+                games.append([w, own[a], round(sc.get(a, 0), 2), own[b], round(sc.get(b, 0), 2), True])
     pickups_ = sorted((a for a in pickups(lg) if a["pos"] not in ("K", "DEF")), key=lambda a: -a["total"])[:15]
     return {
         "season": lg.season, "complete": lg.complete, "weeks": len(lg.weeks), "playoff_teams": lg.playoff_teams, "teams": teams,
-        "keepers": keepers, "trades": trade_rows,
+        "keepers": keepers, "trades": trade_rows, "games": games,
         "pickups": [{"player": a["player"], "pos": a["pos"], "owner": by_name.get(a["team"]), "team": a["team"], "bid": a["bid"],
                      "games": a["games"], "total": round(a["total"], 1)} for a in pickups_],
         "drops": [{"player": d["player"], "pos": d["pos"], "owner": by_name.get(d["team"]), "team": d["team"], "week": d["week"],
