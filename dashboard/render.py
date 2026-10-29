@@ -1288,7 +1288,74 @@ def alltime_sections(sums):
              f'<th class="n">Dropped</th><th class="n">With them</th><th class="n">Since</th></tr></thead><tbody>{dh}</tbody></table></div>'
              '<p class="note">Pickups: points scored for the team that picked him up (waiver or free agent), that season. '
              'Drops: points scored after the drop, wherever he went, that season. Kickers and defenses are left out of both.</p>')
-    return [("alltime-standings", "All-time standings", standings), ("finishes", "Where everyone finished", finishes),
+    # head to head
+    h2h = collections.defaultdict(lambda: {"w": 0, "l": 0, "t": 0, "pf": 0.0, "pa": 0.0, "pw": 0, "pl": 0})
+    for x in sums:
+        for w, a, sa, b, sb, playoff in x.get("games", []):
+            for me, mine, them, theirs in ((a, sa, b, sb), (b, sb, a, sa)):
+                c = h2h[(me, them)]
+                c["w" if mine > theirs else "l" if mine < theirs else "t"] += 1
+                c["pf"] += mine
+                c["pa"] += theirs
+                if playoff:
+                    c["pw" if mine > theirs else "pl"] += 1
+    order = [r["o"] for r in rows]
+    short = lambda o: esc(name[o] if len(name[o]) <= 14 else name[o][:13] + "…")
+    hhead = "".join(f'<th class="n" style="writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;padding:6px 2px" title="{esc(name[o])}">{short(o)}</th>' for o in order)
+    htrs = []
+    for me in order:
+        cells = []
+        for them in order:
+            if me == them:
+                cells.append('<td style="background:var(--grid)"></td>')
+                continue
+            c = h2h.get((me, them))
+            if not c or not (c["w"] + c["l"] + c["t"]):
+                cells.append('<td class="n muted">—</td>')
+                continue
+            g = c["w"] + c["l"] + c["t"]
+            pct = (c["w"] + c["t"] / 2) / g
+            bg = ("var(--good)" if pct > .5 else "var(--bad)" if pct < .5 else "var(--grid)")
+            alpha = 0 if pct == .5 else min(1, abs(pct - .5) * 2) * .55 + .12
+            po = f', playoffs {c["pw"]}-{c["pl"]}' if c["pw"] + c["pl"] else ""
+            tip = f'{esc(name[me])} vs {esc(name[them])}: {c["w"]}-{c["l"]}{f"-{c["t"]}" if c["t"] else ""}{po}; avg score {c["pf"] / g:.1f}–{c["pa"] / g:.1f}'
+            star = "*" if c["pw"] + c["pl"] else ""
+            cells.append(f'<td class="n h2h" title="{tip}" style="position:relative;white-space:nowrap">'
+                         f'<span style="position:absolute;inset:0;background:{bg};opacity:{alpha:.2f}"></span>'
+                         f'<span style="position:relative">{c["w"]}-{c["l"]}{f"-{c["t"]}" if c["t"] else ""}{star}</span></td>')
+        tot = [h2h[(me, o)] for o in order if (me, o) in h2h]
+        htrs.append(f'<tr><td style="white-space:nowrap">{who(me)}</td>{"".join(cells)}'
+                    f'<td class="n team">{sum(c["w"] for c in tot)}-{sum(c["l"] for c in tot)}</td></tr>')
+    # rivalries worth calling out
+    pairs = []
+    for (a, b), c in h2h.items():
+        if a < b:
+            g = c["w"] + c["l"] + c["t"]
+            pairs.append((a, b, c, g))
+    lop = max(pairs, key=lambda p: (abs(p[2]["w"] - p[2]["l"]), p[3]), default=None)
+    most = max(pairs, key=lambda p: (p[3], -abs(p[2]["w"] - p[2]["l"])), default=None)
+    closest = min((p for p in pairs if p[3] >= 3), key=lambda p: abs(p[2]["pf"] - p[2]["pa"]) / p[3], default=None)
+    def rival(label, p, why):
+        a, b, c, g = p
+        if c["l"] > c["w"]:
+            a, b = b, a
+            c = h2h[(a, b)]
+        return (f'<div class="panel tile"><div class="k">{label}</div><div class="v">{c["w"]}-{c["l"]}{f"-{c["t"]}" if c["t"] else ""}</div>'
+                f'<div class="s"><b style="color:var(--ink)">{esc(name[a])}</b> over <b style="color:var(--ink)">{esc(name[b])}</b> · {why(c, g)}</div></div>')
+    tiles = ""
+    if pairs:
+        tiles = ('<div class="tiles" style="margin-bottom:14px">'
+                 + rival("Most one-sided", lop, lambda c, g: f"{g} meetings")
+                 + rival("Most meetings", most, lambda c, g: f"{g} games, avg {c['pf'] / g:.1f}–{c['pa'] / g:.1f}")
+                 + (rival("Closest rivalry", closest, lambda c, g: f"{(c['pf'] - c['pa']) / g:+.1f} points a game") if closest else "")
+                 + '</div>')
+    headtohead = (tiles + f'<div class="panel scroll"><table class="grid-t" style="font-size:13px"><thead><tr><th>Manager ↓ vs →</th>{hhead}<th class="n">Total</th></tr></thead>'
+                  f'<tbody>{"".join(htrs)}</tbody></table></div>'
+                  '<p class="note">Each row is that manager’s record against the column manager: regular season plus playoff games '
+                  '(consolation games left out). Green = winning record, red = losing; * = includes playoff meetings. Hover a cell for the playoff '
+                  'record and average score.</p>')
+
+    return [("alltime-standings", "All-time standings", standings), ("head-to-head", "Head to head", headtohead), ("finishes", "Where everyone finished", finishes),
             ("champions", "Champions and last places", champs), ("keepers", "Keepers", keep_html),
             ("alltime-trades", "Most lopsided trades", trade_html), ("moves", "Best pickups and worst drops", moves)]
 
