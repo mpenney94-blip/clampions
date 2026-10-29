@@ -186,7 +186,8 @@ def boom_bust_chart(lg):
 
 
 def week_hub(lg, w, with_winprob, wp_cache, odds, div_names):
-    """The week-specific sections for week w: [(key, title, html)], each as things stood right after that week."""
+    """The week-specific sections for week w: [(key, title, html)], each as things stood right after that week.
+    Claude writes the columns for the current season only; finished seasons keep the built-in writer."""
     def po(x):
         if x not in odds:
             odds[x] = weekly.playoff_odds(lg, x) if x in lg.weeks else []
@@ -199,14 +200,14 @@ def week_hub(lg, w, with_winprob, wp_cache, odds, div_names):
     pw_prev = {x["team"]: x["rank"] for x in weekly.power(lg, w - 1)} if w - 1 in lg.weeks else {}
     out = [("recap", f"Week {w} recap", render.recap_tiles(stats.recap(lg, w))),
            ("awards", f"Week {w} awards", render.awards_tiles(weekly.awards(lg, w, wp), w)),
-           ("column", "The week in review", render.column(*commentary.write("recap", commentary.week_facts(lg, w, wp, po(w), po(w - 1)))))]
+           ("column", "The week in review", render.column(*commentary.write("recap", commentary.week_facts(lg, w, wp, po(w), po(w - 1)), not lg.complete)))]
     if with_winprob:
         out.append(("winprob", f"Week {w} win probability", wp_html))
     out.append(("power", "Power rankings", render.power_table(weekly.power(lg, w), pw_prev)))
     if more:
         out += [("playoffs", "Playoff odds", render.playoff_table(po(w), po(w - 1), lg.playoff_teams, div_names)),
                 ("preview", f"Week {w + 1} preview", render.preview_cards(weekly.preview(lg, w + 1), w + 1)),
-                ("lookahead", f"Week {w + 1} trash talk", render.column(*commentary.write("preview", commentary.preview_facts(lg, w + 1, po(w)))))]
+                ("lookahead", f"Week {w + 1} trash talk", render.column(*commentary.write("preview", commentary.preview_facts(lg, w + 1, po(w)), not lg.complete)))]
     return out
 
 
