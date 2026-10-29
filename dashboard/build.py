@@ -322,6 +322,8 @@ def seasons(league_id):
 
 def alltime_page(name, tabs, sums):
     secs = render.alltime_sections(sums)
+    talk = ("rivalries", "Rivalry trash talk", render.column(*commentary.write("rivalry", render.rivalry_facts(sums)), "the league’s head-to-head history"))
+    secs.insert(2, talk)  # right after head to head
     toc = ('<nav class="toc" aria-label="Sections"><div class="grp"><span>All-time</span>'
            + "".join(f'<a href="#{k}">{esc(t)}</a>' for k, t, _ in secs) + '</div></nav>')
     body = (f'{tabs}<header class="site"><div><div class="eyebrow">{sums[-1]["season"]}–{sums[0]["season"]} on Sleeper</div>'

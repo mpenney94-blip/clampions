@@ -161,10 +161,14 @@ def _claude(kind, facts):
     try:
         import anthropic
         client = anthropic.Anthropic()
-        ask = ("Write this week's recap column. Hit the best and worst performances, lineup blunders, flops, lucky and unlucky "
-               "results and anything that collapsed late." if kind == "recap" else
-               "Write the look-ahead column for next week. Hype the big games, flag teams wrecked by byes or injuries, and spell out "
-               "the playoff stakes (who is desperate, who is coasting, who is cooked).")
+        ask = {"recap": "Write this week's recap column. Hit the best and worst performances, lineup blunders, flops, lucky and unlucky "
+                        "results and anything that collapsed late.",
+               "preview": "Write the look-ahead column for next week. Hype the big games, flag teams wrecked by byes or injuries, and spell out "
+                          "the playoff stakes (who is desperate, who is coasting, who is cooked).",
+               "rivalry": "Write an all-time rivalries column for the league's history page. Roast the managers who keep losing to the same "
+                          "person, rub in the most one-sided head-to-head records, hype the dead-even rivalries, and work in playoff "
+                          "meetings and titles where they make it sting. Team names in the facts are each manager's current team name.",
+               }[kind]
         resp = client.beta.messages.create(
             model=MODEL, max_tokens=16000, betas=["server-side-fallback-2026-07-01"], fallbacks="default",
             output_config={"effort": "medium"}, system=SYSTEM,
@@ -266,6 +270,20 @@ def _preview_lines(f, rnd):
     return out
 
 
+def _rivalry_lines(f, rnd):
+    out = []
+    for r in f["rivalries"][:6]:
+        a, b, rec = r["leader"], r["trailer"], r["record"]
+        if r["leader_wins"] == r["trailer_wins"]:
+            out.append(f"{_b(a)} and {_b(b)} are dead even at {rec} after {r['games']} meetings. Somebody please break the tie before Thanksgiving.")
+        elif r["trailer_wins"] == 0:
+            out.append(f"{_b(a)} is {rec} all-time against {_b(b)}. That's not a rivalry, that's a subscription.")
+        else:
+            out.append(f"{_b(a)} leads {_b(b)} {rec} all-time" + (f", including {r['playoff_record']} in the playoffs" if r.get("playoff_record") else "")
+                       + ". The scoreboard has spoken.")
+    return out
+
+
 def write(kind, facts, use_claude=True):
     """Paragraphs of HTML for 'recap' or 'preview', plus who wrote them. use_claude=False sticks to the built-in writer."""
     if not facts:
@@ -285,7 +303,7 @@ def write(kind, facts, use_claude=True):
     by = "Claude"
     if not paras:
         rnd = random.Random(f"{kind}-{facts['week']}")
-        paras, by = (_recap_lines if kind == "recap" else _preview_lines)(facts, rnd), "the robot"
+        paras, by = {"recap": _recap_lines, "preview": _preview_lines, "rivalry": _rivalry_lines}[kind](facts, rnd), "the robot"
     out = []
     for p in paras:
         p = html.escape(p)

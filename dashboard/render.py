@@ -1096,10 +1096,10 @@ def overbid_table(rows, budget=100):
             f'including ones that lost or failed because the roster would have been too full. Budget is ${budget}. Click a team for every claim.</p>')
 
 
-def column(paras, by):
+def column(paras, by, source="this week’s stats"):
     if not paras:
         return '<div class="panel muted">Nothing to say this week. Enjoy it while it lasts.</div>'
-    who = ("Written by Claude from this week’s stats." if by == "Claude" else "Written by the dashboard from this week’s stats.")
+    who = f"Written by {'Claude' if by == 'Claude' else 'the dashboard'} from {source}."
     return (f'<div class="panel column">{"".join(f"<p>{p}</p>" for p in paras)}</div>'
             f'<p class="note">{who} All in good fun; complaints can be filed with your waiver wire.</p>')
 
@@ -1353,12 +1353,245 @@ def alltime_sections(sums):
     headtohead = (tiles + f'<div class="panel scroll"><table class="grid-t" style="font-size:13px"><thead><tr><th>Manager ↓ vs →</th>{hhead}<th class="n">Total</th></tr></thead>'
                   f'<tbody>{"".join(htrs)}</tbody></table></div>'
                   '<p class="note">Each row is that manager’s record against the column manager: regular season plus playoff games '
-                  '(consolation games left out). Green = winning record, red = losing; * = includes playoff meetings. Hover a cell for the playoff '
+                  '(consolation and 5th-place games left out). Green = winning record, red = losing; * = includes playoff meetings. Hover a cell for the playoff '
                   'record and average score.</p>')
 
-    return [("alltime-standings", "All-time standings", standings), ("head-to-head", "Head to head", headtohead), ("finishes", "Where everyone finished", finishes),
-            ("champions", "Champions and last places", champs), ("keepers", "Keepers", keep_html),
-            ("alltime-trades", "Most lopsided trades", trade_html), ("moves", "Best pickups and worst drops", moves)]
+    seas_order = {x["season"]: i for i, x in enumerate(reversed(sums))}  # oldest = 0
+    def rec_s(w, l, t=0):
+        return f"{w}-{l}" + (f"-{t}" if t else "")
+
+    # playoff records
+    po = collections.defaultdict(lambda: {"w": 0, "l": 0, "apps": 0, "finals": 0, "titles": 0})
+    for x in sums:
+        for w, a, sa, b, sb, playoff in x.get("games", []):
+            if playoff:
+                po[a]["w" if sa > sb else "l"] += 1
+                po[b]["w" if sb > sa else "l"] += 1
+        for o, z in x["teams"].items():
+            if z["playoffs"]:
+                po[o]["apps"] += 1
+            if z["finish"] in (1, 2):
+                po[o]["finals"] += 1
+            if z["finish"] == 1:
+                po[o]["titles"] += 1
+    reg = {r["o"]: r for r in rows}
+    ptrs = "".join(
+        f'<tr><td>{who(o)}</td><td class="n">{c["apps"]}</td><td class="n team">{rec_s(c["w"], c["l"])}</td>'
+        f'<td class="n">{f"{c["w"] / (c["w"] + c["l"]):.3f}" if c["w"] + c["l"] else "<span class=muted>—</span>"}</td><td class="n muted">{reg[o]["pct"]:.3f}</td>'
+        f'<td class="n">{c["finals"]}</td><td class="n">{"🏆" * c["titles"] or "<span class=muted>0</span>"}</td></tr>'
+        for o, c in sorted(((o, po[o]) for o in owners), key=lambda kv: (-kv[1]["titles"], -kv[1]["w"], kv[1]["l"], -kv[1]["apps"])))
+    playoffs_html = (f'<div class="panel scroll"><table><thead><tr><th>Manager</th><th class="n">Trips</th><th class="n">Playoff record</th>'
+                     f'<th class="n">Playoff win %</th><th class="n">Regular-season win %</th><th class="n">Finals</th><th class="n">Titles</th></tr></thead>'
+                     f'<tbody>{ptrs}</tbody></table></div><p class="note">Winners-bracket games only, including the 3rd-place game (the 5th-place game is left out). '
+                     'Compare the two win % columns to find the regular-season bullies and the playoff closers.</p>')
+
+    # record book
+    allg = [(x["season"], w, a, sa, b, sb, pl) for x in sums for w, a, sa, b, sb, pl in x.get("games", [])]
+    scores = [(sa, x, w, a, pl) for x, w, a, sa, b, sb, pl in allg] + [(sb, x, w, b, pl) for x, w, a, sa, b, sb, pl in allg]
+    def wk(x, w, pl):
+        return f'{x} wk {w}{" (playoffs)" if pl else ""}'
+    def lst(title, items, fmt, cls=""):
+        return (f'<div class="panel"><h3 class="{cls}">{title}</h3><table>'
+                + "".join(f'<tr><td class="muted">{i}</td>{fmt(it)}</tr>' for i, it in enumerate(items, 1)) + '</table></div>')
+    hi = sorted(scores, key=lambda z: -z[0])[:5]
+    lo = sorted(scores, key=lambda z: z[0])[:5]
+    blow = sorted(allg, key=lambda g: -abs(g[3] - g[5]))[:5]
+    close = sorted(allg, key=lambda g: abs(g[3] - g[5]))[:5]
+    def game_fmt(g):
+        x, w, a, sa, b, sb, pl = g
+        (wo, ws), (lo_, ls) = ((a, sa), (b, sb)) if sa >= sb else ((b, sb), (a, sa))
+        return (f'<td>{who(wo)} <b>{ws:.1f}</b> – {ls:.1f} {who(lo_)}<div class="muted" style="font-size:12px">{wk(x, w, pl)}</div></td>'
+                f'<td class="n team">{abs(sa - sb):.2f}</td>')
+    seasons_ = [(x["season"], o, z) for x in sums if x["complete"] for o, z in x["teams"].items()]
+    best_pf = sorted(seasons_, key=lambda t: -t[2]["pf"])[:5]
+    worst_pf = sorted(seasons_, key=lambda t: t[2]["pf"])[:5]
+    season_fmt = lambda t: (f'<td>{who(t[1], t[2]["team"])}<div class="muted" style="font-size:12px">{t[0]} · {rec_s(t[2]["wins"], t[2]["losses"], t[2]["ties"])}'
+                            f' · finished {_ordinal(t[2]["finish"])}</div></td><td class="n team">{t[2]["pf"]:,.1f}</td>')
+    record_book = (
+        '<div class="grid2">'
+        + lst("Highest scores", hi, lambda z: f'<td>{who(z[3])}<div class="muted" style="font-size:12px">{wk(z[1], z[2], z[4])}</div></td><td class="n team">{z[0]:.2f}</td>', "pos")
+        + lst("Lowest scores", lo, lambda z: f'<td>{who(z[3])}<div class="muted" style="font-size:12px">{wk(z[1], z[2], z[4])}</div></td><td class="n team">{z[0]:.2f}</td>', "neg")
+        + lst("Biggest blowouts", blow, game_fmt) + lst("Closest games", close, game_fmt)
+        + lst("Most points in a season", best_pf, season_fmt, "pos") + lst("Fewest points in a season", worst_pf, season_fmt, "neg")
+        + '</div><p class="note">Regular season and playoff games. Season totals are regular season, finished seasons only. '
+          'Names are each manager’s current team.</p>')
+
+    # all-time luck (regular season)
+    exp = collections.Counter()
+    act = collections.Counter()
+    per = collections.defaultdict(dict)
+    for x in sums:
+        byw = collections.defaultdict(dict)
+        for w, a, sa, b, sb, pl in x.get("games", []):
+            if not pl:
+                byw[w][a], byw[w][b] = sa, sb
+                act[a] += 1 if sa > sb else .5 if sa == sb else 0
+                act[b] += 1 if sb > sa else .5 if sa == sb else 0
+        e = collections.Counter()
+        for w, sc in byw.items():
+            for o, v in sc.items():
+                others = [u for p, u in sc.items() if p != o]
+                e[o] += (sum(1 for u in others if v > u) + .5 * sum(1 for u in others if v == u)) / len(others)
+        for o in e:
+            exp[o] += e[o]
+            per[o][x["season"]] = (x["teams"][o]["wins"] + x["teams"][o]["ties"] / 2) - e[o]
+    luck_rows = sorted(owners, key=lambda o: -(act[o] - exp[o]))
+    lmx = max((abs(act[o] - exp[o]) for o in owners), default=1) or 1
+    ltrs = []
+    for o in luck_rows:
+        d = act[o] - exp[o]
+        bar = (f'<div style="display:flex;align-items:center;height:12px"><div style="flex:1;display:flex;justify-content:flex-end">'
+               + (f'<span style="height:12px;width:{100 * -d / lmx:.1f}%;background:var(--bad);border-radius:3px 0 0 3px"></span>' if d < 0 else "")
+               + '</div><div style="width:1px;height:16px;background:var(--ink3)"></div><div style="flex:1">'
+               + (f'<span style="display:block;height:12px;width:{100 * d / lmx:.1f}%;background:var(--good);border-radius:0 3px 3px 0"></span>' if d > 0 else "")
+               + '</div></div>')
+        tip = ", ".join(f"{y}: {v:+.1f}" for y, v in sorted(per[o].items()))
+        ltrs.append(f'<tr title="{tip}"><td>{who(o)}</td><td class="n">{act[o]:g}</td><td class="n">{exp[o]:.1f}</td>'
+                    f'<td class="barcell" style="min-width:160px">{bar}</td><td class="n team {"pos" if d >= 0 else "neg"}">{d:+.1f}</td></tr>')
+    luck_html = (f'<div class="panel scroll"><table><thead><tr><th>Manager</th><th class="n">Wins</th><th class="n">Expected</th>'
+                 f'<th class="barcell">Unlucky ← → Lucky</th><th class="n">Luck</th></tr></thead><tbody>{"".join(ltrs)}</tbody></table></div>'
+                 '<p class="note">Expected wins = each week’s share of the league you outscored (the all-play win rate), added up over every '
+                 'regular-season week. Luck = real wins minus expected: positive means the schedule did you favors. Hover a row for each season.</p>')
+
+    # streaks (regular season + playoffs, carried across seasons)
+    seq = collections.defaultdict(list)
+    for x, w, a, sa, b, sb, pl in sorted(allg, key=lambda g: (seas_order[g[0]], g[1])):
+        if sa != sb:
+            seq[a].append(("W" if sa > sb else "L", x, w))
+            seq[b].append(("W" if sb > sa else "L", x, w))
+    def runs(v, kind):
+        best, cur, start = (0, None, None), 0, None
+        for i, (r, x, w) in enumerate(v):
+            if r == kind:
+                cur, start = (cur + 1, start if cur else (x, w))
+                if cur > best[0]:
+                    best = (cur, start, (x, w))
+            else:
+                cur = 0
+        return best
+    span = lambda b: (f'{b[1][0]} wk {b[1][1]} – {b[2][0]} wk {b[2][1]}' if b[1] else "")
+    strs = []
+    for o in sorted(owners, key=lambda o: -runs(seq[o], "W")[0]):
+        v = seq[o]
+        bw, bl = runs(v, "W"), runs(v, "L")
+        cur = 0
+        for r, *_ in reversed(v):
+            if r != v[-1][0]:
+                break
+            cur += 1
+        curs = f'<span class="{"pos" if v[-1][0] == "W" else "neg"}">{v[-1][0]}{cur}</span>' if v else "—"
+        strs.append(f'<tr><td>{who(o)}</td><td class="n team pos">{bw[0]}</td><td class="muted" style="font-size:12px">{span(bw)}</td>'
+                    f'<td class="n team neg">{bl[0]}</td><td class="muted" style="font-size:12px">{span(bl)}</td><td class="n team">{curs}</td></tr>')
+    streak_html = (f'<div class="panel scroll"><table><thead><tr><th>Manager</th><th class="n">Longest win streak</th><th></th>'
+                   f'<th class="n">Longest losing streak</th><th></th><th class="n">Current</th></tr></thead><tbody>{"".join(strs)}</tbody></table></div>'
+                   '<p class="note">Regular season and playoff games in order, carrying over from one season to the next.</p>')
+
+    # draft history
+    drafts = [(x["season"], d) for x in sums for d in x.get("draft", [])]
+    firsts = collections.defaultdict(list)
+    for y, d in drafts:
+        if d["round"] == 1 and d["owner"]:
+            firsts[d["owner"]].append((y, d))
+    classes = collections.defaultdict(float)
+    for y, d in drafts:
+        if d["owner"] and not d["keeper"]:
+            classes[(y, d["owner"])] += d["value"]
+    ftr = []
+    for o in sorted(owners, key=lambda o: -sum(d["value"] for _, d in firsts[o])):
+        cells = []
+        for x in sums:
+            ds = [d for y, d in firsts[o] if y == x["season"]]
+            cells.append("<td>" + ("".join(f'<div><b>{esc(d["player"])}</b>{" <span class=star title=keeper>★</span>" if d["keeper"] else ""} '
+                                           f'<span class="muted">#{d["pick"]}</span> <span class="{"pos" if d["value"] >= 0 else "neg"}" style="font-size:12px">'
+                                           f'{signed(d["value"], 0)}</span></div>' for d in ds) or '<span class="muted">—</span>') + "</td>")
+        tot = sum(d["value"] for _, d in firsts[o])
+        ftr.append(f'<tr><td>{who(o)}</td>{"".join(cells)}<td class="n team {"pos" if tot >= 0 else "neg"}">{signed(tot, 0)}</td></tr>')
+    best_cls = sorted(classes.items(), key=lambda kv: -kv[1])[:5]
+    worst_cls = sorted(classes.items(), key=lambda kv: kv[1])[:5]
+    cls_fmt = lambda kv: f'<td>{who(kv[0][1])}<div class="muted" style="font-size:12px">{kv[0][0]} draft</div></td><td class="n team {"pos" if kv[1] >= 0 else "neg"}">{signed(kv[1], 0)}</td>'
+    draft_html = (f'<div class="panel scroll"><table style="font-size:14px"><thead><tr><th>Manager</th>'
+                  + "".join(f'<th>{x["season"]} 1st round</th>' for x in sums) + '<th class="n">Total vs. slot</th></tr></thead>'
+                  f'<tbody>{"".join(ftr)}</tbody></table></div>'
+                  f'<div class="grid2" style="margin-top:14px">{lst("Best draft classes", best_cls, cls_fmt, "pos")}{lst("Worst draft classes", worst_cls, cls_fmt, "neg")}</div>'
+                  '<p class="note">Value = a pick’s regular-season points that year minus what picks in the same draft slot usually score. '
+                  'Draft classes add up every non-keeper pick. ★ = keeper using a first-round slot. The current season counts points so far.</p>')
+
+    # manager tendencies
+    tcount, partners = collections.Counter(), collections.defaultdict(collections.Counter)
+    for x in sums:
+        for t in x["trades"]:
+            os_ = [sd["owner"] for sd in t["sides"] if sd["owner"]]
+            for o in os_:
+                tcount[o] += 1
+                for p in os_:
+                    if p != o:
+                        partners[o][p] += 1
+    faab = collections.defaultdict(collections.Counter)
+    bench_ = collections.Counter()
+    for x in sums:
+        for o, f in x.get("faab", {}).items():
+            faab[o].update(f)
+        for o, v in x.get("bench", {}).items():
+            bench_[o] += v
+    ttrs = []
+    for o in sorted(owners, key=lambda o: -tcount[o]):
+        fav = partners[o].most_common(1)
+        f = faab[o]
+        nseas = reg[o]["seasons"]
+        ttrs.append(f'<tr><td>{who(o)}</td><td class="n">{tcount[o]}</td>'
+                    f'<td>{(who(fav[0][0]) + f" <span class=muted>×{fav[0][1]}</span>") if fav else "<span class=muted>—</span>"}</td>'
+                    f'<td class="n">{f["bids"]}</td><td class="n">{f["won"]}</td><td class="n">${f["spent"]}</td><td class="n neg">${f["over"]}</td>'
+                    f'<td class="n team">{bench_[o]:,.0f}</td><td class="n muted">{bench_[o] / nseas:,.0f}</td></tr>')
+    tendencies = (f'<div class="panel scroll"><table><thead><tr><th>Manager</th><th class="n">Trades</th><th>Favorite trade partner</th>'
+                  f'<th class="n">Waiver bids</th><th class="n">Won</th><th class="n">FAAB spent</th><th class="n">Overbid</th>'
+                  f'<th class="n">Points left on bench</th><th class="n">Per season</th></tr></thead><tbody>{"".join(ttrs)}</tbody></table></div>'
+                  '<p class="note">All seasons, including this one so far. Overbid = how much winning claims beat the next-highest bid by '
+                  '(the whole bid when nobody else claimed the player). Bench points = the best possible lineup minus the one actually started, every week.</p>')
+
+    return [("alltime-standings", "All-time standings", standings), ("head-to-head", "Head to head", headtohead),
+            ("finishes", "Where everyone finished", finishes), ("champions", "Champions and last places", champs),
+            ("playoff-records", "Playoff records", playoffs_html), ("record-book", "Record book", record_book),
+            ("luck", "All-time luck", luck_html), ("streaks", "Streaks", streak_html), ("keepers", "Keepers", keep_html),
+            ("draft-history", "Draft history", draft_html), ("alltime-trades", "Most lopsided trades", trade_html),
+            ("tendencies", "Manager tendencies", tendencies), ("moves", "Best pickups and worst drops", moves)]
+
+
+def rivalry_facts(sums):
+    """The biggest head-to-head rivalries, as facts for the rivalry column."""
+    owners, name = [], {}
+    for x in sums:
+        for o, z in x["teams"].items():
+            if o not in name:
+                owners.append(o)
+                name[o] = z["team"]
+    h = collections.defaultdict(lambda: [0, 0, 0, 0, 0.0, 0.0])  # w, l, playoff w, playoff l, pf, pa
+    for x in sums:
+        for w, a, sa, b, sb, pl in x.get("games", []):
+            for me, m, them, t in ((a, sa, b, sb), (b, sb, a, sa)):
+                c = h[(me, them)]
+                c[0 if m > t else 1] += 1 if m != t else 0
+                if pl:
+                    c[2 if m > t else 3] += 1
+                c[4] += m
+                c[5] += t
+    titles = collections.Counter(o for x in sums if x["complete"] for o, z in x["teams"].items() if z["finish"] == 1)
+    out = []
+    for (a, b), c in h.items():
+        if a < b and c[0] + c[1] >= 3:
+            lead, trail, (w, l, pw, pl, pf, pa) = (a, b, c) if c[0] >= c[1] else (b, a, h[(b, a)])
+            out.append({"leader": name[lead], "trailer": name[trail], "record": f"{w}-{l}", "leader_wins": w, "trailer_wins": l,
+                        "games": w + l, "playoff_record": f"{pw}-{pl}" if pw + pl else None,
+                        "avg_score": f"{pf / (w + l):.1f}-{pa / (w + l):.1f}",
+                        "leader_titles": titles[lead], "trailer_titles": titles[trail]})
+    lopsided = sorted(out, key=lambda r: (-(r["leader_wins"] - r["trailer_wins"]), -r["games"]))[:5]
+    even = sorted((r for r in out if r["games"] >= 5), key=lambda r: (r["leader_wins"] - r["trailer_wins"], -r["games"]))[:3]
+    seen, picks = set(), []
+    for r in lopsided + even:
+        k = (r["leader"], r["trailer"])
+        if k not in seen:
+            seen.add(k)
+            picks.append(r)
+    return {"week": "alltime", "seasons": f'{sums[-1]["season"]}-{sums[0]["season"]}', "rivalries": picks}
 
 
 def st_mean(v):
