@@ -107,8 +107,10 @@ class SleeperClient:
         data = self._get(f"players/{sport}")
         if cache_path:
             os.makedirs(os.path.dirname(cache_path), exist_ok=True)
-            with open(cache_path, "w") as f:
+            tmp = f"{cache_path}.{os.getpid()}.tmp"  # write then rename, so a parallel reader never sees half a file
+            with open(tmp, "w") as f:
                 json.dump(data, f)
+            os.replace(tmp, cache_path)
         return data
 
     def trending_players(self, kind="add", lookback_hours=24, limit=25, sport="nfl"):
