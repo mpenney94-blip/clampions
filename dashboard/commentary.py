@@ -151,9 +151,13 @@ blown leads, and whoever is circling the drain. Give credit where it's due too, 
 Don't hold back. Profanity is fine in moderation. Keep it about fantasy football and the decisions people made - no jokes about
 real players' personal lives, health or off-field legal troubles, and nothing hateful.
 
-Use only the facts you're given; never invent stats, scores, players or events. Team names are the managers' identities - roast the
+Use only the facts and league notes you're given; never invent stats, scores, players or events. Team names are the managers' identities - roast the
 team/manager by team name. Write 5 to 7 short paragraphs, each 1-3 sentences, punchy, with no headings, no bullet points, no emoji,
 and no preamble or sign-off. Wrap each team name in **double asterisks** the first time it appears in a paragraph."""
+NOTES_PATH = os.path.join(os.path.dirname(__file__), "league_notes.md")
+if os.path.exists(NOTES_PATH):  # league lore and real-life news the managers want worked in now and then
+    with open(NOTES_PATH) as _f:
+        SYSTEM += "\n\nLeague notes (traditions, style and news to draw on when they fit):\n" + _f.read()
 
 
 def _claude(kind, facts):
@@ -267,7 +271,8 @@ def _preview_lines(f, rnd):
     cooked = [s for s in sides if s["playoff_odds"] <= 10]
     if cooked:
         s = min(cooked, key=lambda s: s["playoff_odds"])
-        out.append(f"And {_b(s['team'])}: {s['playoff_odds']}% playoff odds, {s['last_place_odds']}% chance of last place. Play for pride. Or don't, nobody's watching.")
+        out.append(f"And {_b(s['team'])}: {s['playoff_odds']}% playoff odds. Time to start pricing out duck costumes, because the toilet bowl "
+                   f"is calling and the paintball guns are already loaded.")
     return out
 
 
