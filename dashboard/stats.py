@@ -278,6 +278,46 @@ def waiver_bids(lg):
     return sorted(out.values(), key=lambda x: -x["over"])
 
 
+def drop_regrets(lg, top=12, skip=("K", "DEF")):
+    """Players a team cut who then scored, ranked by points since the drop. Kickers and defenses are left out:
+    streaming them is a plan, not a mistake. A team re-adding the player ends that drop's window."""
+    rostered = {(m["roster_id"], w): set(m.get("players") or []) for w in lg.weeks for m in lg.matchups[w]}
+    started = {(m["roster_id"], w): set(m.get("starters") or []) for w in lg.weeks for m in lg.matchups[w]}
+    adds = collections.defaultdict(list)  # (team, player) -> times the team added him
+    for t in lg.transactions:
+        if t["status"] == "complete":
+            for p, r in (t.get("adds") or {}).items():
+                adds[(r, p)].append(t["status_updated"])
+    out = []
+    for t in sorted(lg.transactions, key=lambda t: t["status_updated"]):
+        if t["status"] != "complete" or t["type"] == "trade":
+            continue
+        for p, r in (t.get("drops") or {}).items():
+            if lg.pos_of(p) in skip:
+                continue
+            eff = lg.first_week_after(t["status_updated"] / 1000)
+            back = min((a for a in adds[(r, p)] if a > t["status_updated"]), default=None)
+            end = lg.first_week_after(back / 1000) if back else lg.weeks[-1] + 1
+            before = [w for w in lg.weeks if w < eff and p in rostered.get((r, w), ()) and p in lg.played[w]]
+            after = [w for w in lg.weeks if eff <= w < end and p in lg.played[w]]
+            if not after:
+                continue
+            pts_after = sum(lg.pts[p].get(w, 0) for w in after)
+            homes = collections.Counter(next((lg.team[o] for (o, ww), ps in rostered.items() if ww == w and p in ps), "free agent") for w in after)
+            now = next((lg.team[o] for o, ps in lg.roster_now.items() if p in ps), None)
+            out.append({"player": lg.name_of(p), "pos": lg.pos_of(p), "team": lg.team[r], "week": eff,
+                        "before_games": len(before), "before": sum(lg.pts[p].get(w, 0) for w in before),
+                        "after_games": len(after), "after": pts_after,
+                        "best": max((lg.pts[p].get(w, 0), w) for w in after),
+                        "kept_by": [h for h, _ in homes.most_common() if h != "free agent"],
+                        "now": now, "readded": bool(back),
+                        # points he scored while in another team's starting lineup, ie. the damage done elsewhere
+                        "started_elsewhere": sum(lg.pts[p].get(w, 0) for w in after
+                                                 if any(p in started.get((o, w), ()) for o in lg.team if o != r))})
+    out.sort(key=lambda x: -x["after"])
+    return out[:top]
+
+
 def carry(lg):
     """Where each team's starting-lineup points came from, by position and by player."""
     out = []
