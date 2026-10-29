@@ -266,8 +266,8 @@ def _preview_lines(f, rnd):
     return out
 
 
-def write(kind, facts):
-    """Paragraphs of HTML for 'recap' or 'preview', plus who wrote them."""
+def write(kind, facts, use_claude=True):
+    """Paragraphs of HTML for 'recap' or 'preview', plus who wrote them. use_claude=False sticks to the built-in writer."""
     if not facts:
         return None, None
     key = hashlib.sha256(json.dumps([MODEL, SYSTEM, kind, facts], sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:24]
@@ -277,7 +277,7 @@ def write(kind, facts):
         with open(path) as f:
             paras = json.load(f)
     else:
-        paras = _claude(kind, facts)
+        paras = _claude(kind, facts) if use_claude else None
         if paras:
             os.makedirs(CACHE, exist_ok=True)
             with open(path, "w") as f:
