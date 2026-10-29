@@ -1,9 +1,13 @@
 name: League dashboard
 
 on:
+  # GitHub schedules run in UTC, so each run is listed for both daylight time (PDT) and standard time (PST);
+  # the "Check the Pacific time" step below lets only the one matching the current clock through.
   schedule:
-    - cron: "0 15 * * 2"  # Tuesdays 11am ET, after Monday night's game is final
-    - cron: "0 15 * * 4"  # Thursdays, to pick up Sleeper's stat corrections
+    - cron: "0 11 * * 2"  # Tuesday 4am PDT: the week's results, recap and next-week preview
+    - cron: "0 12 * * 2"  # Tuesday 4am PST
+    - cron: "0 19 * * 4"  # Thursday noon PDT: stat corrections, fresh projections and preview (recap is kept)
+    - cron: "0 20 * * 4"  # Thursday noon PST
   workflow_dispatch:
   push:
     branches: [main]
@@ -22,7 +26,26 @@ env:
   LEAGUE_ID: "1387868351270760448"  # We Are The Clampions
 
 jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.tz.outputs.run }}
+    steps:
+      - name: Check the Pacific time
+        id: tz
+        run: |
+          zone=$(TZ=America/Los_Angeles date +%Z)
+          case "${{ github.event.schedule }}" in
+            "0 11 * * 2"|"0 19 * * 4") want=PDT ;;
+            "0 12 * * 2"|"0 20 * * 4") want=PST ;;
+            *) want=$zone ;;  # pushes and manual runs always build
+          esac
+          echo "run=$([ "$zone" = "$want" ] && echo yes || echo no)" >> "$GITHUB_OUTPUT"
+          echo "Pacific is on $zone; this trigger is for $want"
+
   build:
+    needs: gate
+    if: needs.gate.outputs.run == 'yes'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

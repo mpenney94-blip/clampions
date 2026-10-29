@@ -5,6 +5,7 @@ otherwise (or if the call fails) a built-in writer does, picking from canned lin
 """
 
 import collections
+import glob
 import hashlib
 import html
 import json
@@ -291,6 +292,12 @@ def write(kind, facts, use_claude=True):
     key = hashlib.sha256(json.dumps([MODEL, SYSTEM, kind, facts], sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:24]
     path = os.path.join(CACHE, f"{kind}-{facts['week']}-{key}.json")
     paras = None
+    if use_claude and kind == "recap" and not os.path.exists(path):
+        # a week's recap is written once, on the first build after its games, and kept from then on: later builds
+        # (Thursday's stat corrections) leave it alone. Only Claude-written seasons are cached, so no other season matches.
+        done = sorted(glob.glob(os.path.join(CACHE, f"{kind}-{facts['week']}-*.json")), key=os.path.getmtime)
+        if done:
+            path = done[-1]
     if os.path.exists(path):
         with open(path) as f:
             paras = json.load(f)

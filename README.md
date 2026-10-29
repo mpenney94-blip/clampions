@@ -46,7 +46,7 @@ python3 -m dashboard.build <league_id> --out _site --no-winprob   # quick build 
 python3 -m dashboard.build <league_id> --out _site --only 2026      # just one season
 ```
 
-`.github/workflows/dashboard.yml` rebuilds and publishes it to GitHub Pages every Tuesday and Thursday, on pushes that change the dashboard code, and on demand from the Actions tab ("Run workflow"). Change `LEAGUE_ID` in that file to point it at a different league.
+`.github/workflows/dashboard.yml` rebuilds and publishes it to GitHub Pages every Tuesday at 4am Pacific (the week's results, recap and next-week preview) and Thursday at noon Pacific (stat corrections, fresh projections and an updated preview; each week's recap is written once and kept), on pushes that change the dashboard code, and on demand from the Actions tab ("Run workflow"). Change `LEAGUE_ID` in that file to point it at a different league.
 
 `<league_id>` is the current season's league. Earlier seasons are found through Sleeper's `previous_league_id` chain and
 get their own tab (`/2025/`, `/2024/`, ...), next to an all-time tab (`/alltime/`). Finished seasons never change, so the
