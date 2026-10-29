@@ -235,6 +235,7 @@ def build(league_id, out, with_winprob=True, tabs=""):
     hub = week_hub(lg, last, with_winprob, wp_cache, odds, div_names)
     proj_rows, proj_over, proj_under = weekly.vs_projection(lg)
     tr_rows, tr_league = weekly.trends(lg)
+    dx = stats.draft_extras(lg)
     S = {k: (t, h) for k, t, h in hub}
     S.update({
         "history": ("Past weeks", f'<div class="panel">{week_links}</div>'),
@@ -260,6 +261,10 @@ def build(league_id, out, with_winprob=True, tabs=""):
         "drops": ("Drops that came back to bite", '<p class="lede">The worst cuts of the season: players who went on to produce after their team let them go.</p>'
                   + render.drop_table(stats.drop_regrets(lg))),
         "position": ("Position strength", render.position_table(*weekly.position_strength(lg))),
+        "draft-grades": ("Draft grades", render.draft_grades(dx)) if dx else None,
+        "draft-board": ("Draft board", render.draft_board(dx, lg.team)) if dx else None,
+        "redraft": ("Redraft", render.redraft_table(dx)) if dx else None,
+        "payoff": ("Which positions paid off", render.payoff_table(dx)) if dx else None,
         "sources": ("Drafted vs. picked up", render.source_bars(src)),
         "draft": ("Draft report card", draft_chart(lg)),
         "rounds": ("Points by draft round", render.round_table(src, max((p["round"] for p in lg.picks), default=0))),
@@ -272,7 +277,7 @@ def build(league_id, out, with_winprob=True, tabs=""):
         ("roster", "Roster", "Trades, byes, injuries, lineup calls and the waiver wire.",
          ["trades", "byes", "injuries", "bench", "waivers", "waiver-wars", "overbids", "drops", "position"]),
         ("draft-group", "Draft", "How the draft played out, and how much each team still leans on it.",
-         ["sources", "draft", "rounds"]),
+         ["draft-grades", "draft", "draft-board", "redraft", "rounds", "payoff", "sources"]),
     ]
     groups = [(gid, name, blurb, [k for k in keys if S.get(k)]) for gid, name, blurb, keys in groups]
     toc = ('<nav class="toc" aria-label="Sections">'
