@@ -494,7 +494,8 @@ def draft(lg, window=15):
         rows.append({"pick": p["pick_no"], "round": p["round"], "player": lg.name_of(pid), "keeper": bool(p.get("is_keeper")),
                      "gone": _departure(lg, p["roster_id"], pid) if gone else None,
                      "pos": lg.pos_of(pid) or (p.get("metadata") or {}).get("position"),
-                     "team": lg.team.get(p["roster_id"], "?"), "pts": sum(lg.pts.get(pid, {}).get(w, 0) for w in lg.weeks)})
+                     "team": lg.team.get(p["roster_id"], "?"), "pts": sum(lg.pts.get(pid, {}).get(w, 0) for w in lg.weeks),
+                     "rid": p["roster_id"], "slot": p.get("draft_slot"), "pid": pid})
     for x in rows:
         x["exp"] = st.median(y["pts"] for y in rows if abs(y["pick"] - x["pick"]) <= window)
         x["value"] = x["pts"] - x["exp"]
@@ -595,3 +596,79 @@ def season_summary(lg):
                    "before": round(d["before"], 1), "after": round(d["after"], 1), "after_games": d["after_games"],
                    "started_elsewhere": round(d["started_elsewhere"], 1)} for d in drop_regrets(lg, top=15)],
     }
+
+
+# ---------------------------------------------------------------- more draft views
+def _replacement(lg):
+    """Points per game of a replacement-level starter at each position: the Nth best, where N is how many the league starts."""
+    teams = len(lg.team)
+    need = collections.Counter()
+    for sl in lg.slots:
+        if sl in FLEX:
+            share = {"FLEX": {"RB": .45, "WR": .45, "TE": .1}, "SUPER_FLEX": {"QB": .8, "RB": .1, "WR": .1},
+                     "REC_FLEX": {"WR": .8, "TE": .2}, "WRRB_FLEX": {"RB": .5, "WR": .5}}.get(sl, {})
+            for pos, f in share.items():
+                need[pos] += f
+        else:
+            need[sl] += 1
+    games = {p: [w for w in lg.weeks if p in lg.played[w]] for p in lg.pts}
+    ppg = collections.defaultdict(list)
+    for p, ws in games.items():
+        if len(ws) >= max(1, len(lg.weeks) // 3):
+            ppg[lg.pos_of(p)].append(sum(lg.pts[p][w] for w in ws) / len(ws))
+    return {pos: (sorted(v, reverse=True)[min(len(v) - 1, max(0, round(need[pos] * teams) - 1))] if v else 0)
+            for pos, v in ppg.items() if pos in need}
+
+
+def draft_extras(lg):
+    """Grades, board, redraft and position payoff for this season's draft."""
+    rows = draft(lg)
+    if not rows:
+        return None
+    starts = collections.Counter()
+    for w in lg.weeks:
+        for m in lg.matchups[w]:
+            for p in m["starters"]:
+                starts[(m["roster_id"], p)] += 1
+    for x in rows:
+        x["starts"] = starts[(x["rid"], x["pid"])]
+    # grades
+    by_team = collections.defaultdict(list)
+    for x in rows:
+        by_team[x["rid"]].append(x)
+    tot = {r: sum(x["value"] for x in v) for r, v in by_team.items()}
+    mu, sd = st.mean(tot.values()), (st.pstdev(tot.values()) or 1)
+    cut = [(1.5, "A+"), (1, "A"), (.6, "A-"), (.3, "B+"), (0, "B"), (-.3, "B-"), (-.6, "C+"), (-1, "C"), (-1.5, "D")]
+    grades = []
+    for r, v in by_team.items():
+        z = (tot[r] - mu) / sd
+        grades.append({"team": lg.team[r], "value": tot[r], "grade": next((g for c, g in cut if z >= c), "F"),
+                       "pts": sum(x["pts"] for x in v), "picks": len(v),
+                       "hits": sum(1 for x in v if x["value"] > 0), "kept": sum(1 for x in v if not x["gone"]),
+                       "starts": sum(x["starts"] for x in v),
+                       "best": max(v, key=lambda x: x["value"]), "worst": min(v, key=lambda x: x["value"])})
+    grades.sort(key=lambda g: -g["value"])
+    # redraft: everyone who played, ranked by points per game above a replacement starter at the position, times games
+    repl = _replacement(lg)
+    taken = {x["pid"]: x for x in rows}
+    pool = []
+    for p, wk in lg.pts.items():
+        pos = lg.pos_of(p)
+        ws = [w for w in lg.weeks if p in lg.played[w]]
+        if pos not in repl or not ws:
+            continue
+        total = sum(wk[w] for w in ws)
+        pool.append({"player": lg.name_of(p), "pos": pos, "pts": total, "games": len(ws),
+                     "var": total - repl[pos] * len(ws), "orig": taken.get(p)})
+    pool.sort(key=lambda z: -z["var"])
+    redraft = pool[:2 * len(lg.team)]
+    # position payoff by round band
+    bands = [(1, 2), (3, 5), (6, 9), (10, 99)]
+    payoff = {}
+    for pos in ("QB", "RB", "WR", "TE"):
+        for lo, hi in bands:
+            xs = [x for x in rows if x["pos"] == pos and lo <= x["round"] <= hi]
+            if xs:
+                payoff[(pos, lo)] = {"n": len(xs), "avg": st.mean(x["value"] for x in xs), "hit": sum(1 for x in xs if x["value"] > 0) / len(xs)}
+    return {"rows": rows, "grades": grades, "redraft": redraft, "payoff": payoff, "bands": bands,
+            "slots": sorted({x["slot"] for x in rows if x["slot"]}), "rounds": max(x["round"] for x in rows)}

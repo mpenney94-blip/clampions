@@ -1633,3 +1633,95 @@ def rivalry_facts(sums):
 def st_mean(v):
     v = list(v)
     return sum(v) / len(v) if v else 0
+
+
+# ---------------------------------------------------------------- more draft views
+def draft_grades(d):
+    trs = []
+    for g in d["grades"]:
+        cls = "pos" if g["grade"][0] in "AB" else "neg" if g["grade"][0] in "DF" else ""
+        b, w = g["best"], g["worst"]
+        trs.append(f'<tr><td data-v="{esc(g["team"].lower())}" class="team" style="white-space:nowrap">{esc(g["team"])}</td>'
+                   f'<td class="n" data-v="{g["value"]:.1f}"><b class="{cls}" style="font:700 20px var(--display)">{g["grade"]}</b></td>'
+                   f'<td class="n {"pos" if g["value"] >= 0 else "neg"}" data-v="{g["value"]:.1f}">{signed(g["value"], 0)}</td>'
+                   f'<td class="n" data-v="{g["pts"]:.1f}">{g["pts"]:,.0f}</td>'
+                   f'<td class="n" data-v="{g["hits"] / g["picks"]:.3f}">{g["hits"]}/{g["picks"]}</td>'
+                   f'<td class="n" data-v="{g["kept"]}">{g["kept"]}</td><td class="n">{g["starts"]}</td>'
+                   f'<td data-v="{b["value"]:.1f}"><b>{esc(b["player"])}</b> <span class="muted">#{b["pick"]}</span> <span class="pos" style="font-size:12px">{signed(b["value"], 0)}</span></td>'
+                   f'<td data-v="{w["value"]:.1f}"><b>{esc(w["player"])}</b> <span class="muted">#{w["pick"]}</span> <span class="neg" style="font-size:12px">{signed(w["value"], 0)}</span></td></tr>')
+    return (f'<div class="panel scroll"><table class="sortable"><thead><tr><th>Team</th><th class="n" aria-sort="descending">Grade</th><th class="n">vs. slot</th>'
+            f'<th class="n">Points</th><th class="n">Hits</th><th class="n">Still rostered</th><th class="n">Lineup starts</th><th>Best pick</th><th>Worst pick</th></tr></thead>'
+            f'<tbody>{"".join(trs)}</tbody></table></div>'
+            '<p class="note">Every pick (keepers included) scored against what picks in that draft slot usually produce; the grade curves each team’s total '
+            'against the league. Hits = picks that beat their slot. Lineup starts = weeks the team’s draftees spent in its own starting lineup. '
+            'Click a column header to sort.</p>')
+
+
+def draft_board(d, teams):
+    pos_i = {p: i for i, p in enumerate(POS_ORDER, 1)}
+    cell = {(x["round"], x["slot"]): x for x in d["rows"]}
+    first = {x["slot"]: x["team"] for x in d["rows"] if x["round"] == 1}
+    head = "".join(f'<th class="n" style="font-size:11px;white-space:normal;min-width:84px">{esc(first.get(sl, ""))}</th>' for sl in d["slots"])
+    trs = []
+    for rd in range(1, d["rounds"] + 1):
+        tds = []
+        for sl in d["slots"]:
+            x = cell.get((rd, sl))
+            if not x:
+                tds.append("<td></td>")
+                continue
+            c = pos_i.get(x["pos"], 0)
+            bg = f"background:color-mix(in srgb,var(--c{c}) 22%,var(--surface))" if c else ""
+            name = x["player"].split(" ", 1)[-1] if len(x["player"]) > 14 else x["player"]
+            tip = (f'#{x["pick"]} {x["player"]} ({x["pos"]}) to {x["team"]}: {x["pts"]:.1f} pts, {x["value"]:+.1f} vs. slot'
+                   + (f'; {x["gone"]}' if x["gone"] else "") + ("; keeper" if x["keeper"] else ""))
+            tds.append(f'<td style="{bg};font-size:12px;line-height:1.25;padding:5px 6px" title="{esc(tip)}">'
+                       f'<b{" class=gone" if x["gone"] else ""}>{esc(name)}</b>{"<span class=star>★</span>" if x["keeper"] else ""}'
+                       f'<div class="{"pos" if x["value"] >= 0 else "neg"}" style="font-size:11px">{x["pts"]:.0f}</div></td>')
+        trs.append(f'<tr><td class="muted" style="font-size:12px">R{rd}</td>{"".join(tds)}</tr>')
+    legend = '<div class="legend">' + "".join(f'<span><i style="background:var(--c{i})"></i>{p}</span>' for p, i in pos_i.items()) + '</div>'
+    return (f'<div class="panel scroll">{legend}<table class="picks" style="min-width:{90 * len(d["slots"])}px"><thead><tr><th></th>{head}</tr></thead>'
+            f'<tbody>{"".join(trs)}</tbody></table></div>'
+            '<p class="note">The whole draft, by round and draft slot (columns are named for the team that picked first in that slot). '
+            'Colors = position; the number is the player’s points this season, green if he beat his slot and red if not. '
+            'Struck through = no longer on the team that drafted him; ★ = keeper. Hover a pick for details.</p>')
+
+
+def redraft_table(d):
+    trs = []
+    for i, z in enumerate(d["redraft"], 1):
+        o = z["orig"]
+        if o:
+            move = o["pick"] - i
+            was = (f'#{o["pick"]} <span class="muted">({esc(o["team"])})</span> '
+                   f'<span class="{"pos" if move > 0 else "neg" if move < 0 else "muted"}" style="font-size:12px">{"▲" if move > 0 else "▼" if move < 0 else ""}{abs(move) or "="}</span>')
+        else:
+            was = '<span class="pos">Undrafted</span>'
+        trs.append(f'<tr><td class="muted">{i}</td><td><b>{esc(z["player"])}</b> <span class="muted">{z["pos"]}</span></td>'
+                   f'<td class="n">{z["pts"]:.1f}</td><td class="n muted">{z["games"]}</td><td class="n team">{z["var"]:+.0f}</td><td>{was}</td></tr>')
+    return (f'<div class="panel scroll"><table><thead><tr><th>Redraft</th><th>Player</th><th class="n">Points</th><th class="n">Games</th>'
+            f'<th class="n">Above replacement</th><th>Actually went</th></tr></thead><tbody>{"".join(trs)}</tbody></table></div>'
+            '<p class="note">The first two rounds if the draft were redone knowing this season’s results. Players are ranked by points above a '
+            'replacement-level starter at their position (the last starter the league would field there), so quarterbacks don’t take over the board. '
+            'Kickers and defenses are left out.</p>')
+
+
+def payoff_table(d):
+    labels = {1: "Rounds 1–2", 3: "Rounds 3–5", 6: "Rounds 6–9", 10: "Rounds 10+"}
+    head = "".join(f'<th class="n">{labels[lo]}</th>' for lo, _ in d["bands"])
+    trs = []
+    for pos in ("QB", "RB", "WR", "TE"):
+        tds = []
+        for lo, _ in d["bands"]:
+            c = d["payoff"].get((pos, lo))
+            if not c:
+                tds.append('<td class="n muted">—</td>')
+                continue
+            step = max(1, min(7, round(1 + 6 * c["hit"])))
+            fg = "#fff" if step >= 5 else "var(--ink)"
+            tds.append(f'<td class="w" style="background:var(--r{step});color:{fg}" title="{c["n"]} picks, average {c["avg"]:+.1f} vs. slot">'
+                       f'{c["hit"]:.0%}<div style="font-size:10px;font-weight:400;opacity:.85">{c["avg"]:+.0f} avg · {c["n"]}</div></td>')
+        trs.append(f'<tr><td class="team">{pos}</td>{"".join(tds)}</tr>')
+    return (f'<div class="panel scroll"><table class="grid-t"><thead><tr><th>Position</th>{head}</tr></thead><tbody>{"".join(trs)}</tbody></table></div>'
+            '<p class="note">League-wide: the share of picks at each position and stage of the draft that beat their slot (darker = more hits), '
+            'with the average points vs. slot and the number of picks underneath.</p>')
