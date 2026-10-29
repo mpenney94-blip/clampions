@@ -37,6 +37,13 @@ jobs:
           path: _past
           # finished seasons never change, so they're rebuilt only when the code or the current league does
           key: past-${{ env.LEAGUE_ID }}-${{ hashFiles('dashboard/**', 'winprob.py', 'sleeper.py') }}
+      - name: Restore written columns
+        uses: actions/cache@v4
+        with:
+          path: .cache/commentary
+          # a fresh key each run so new columns get saved; restore-keys picks up the last run's
+          key: commentary-${{ github.run_id }}
+          restore-keys: commentary-
       - name: Build site
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}  # optional: without it the built-in writer does the trash talk
