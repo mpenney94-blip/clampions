@@ -104,6 +104,10 @@ nav.seasons{display:flex;flex-wrap:wrap;gap:4px;margin:0 0 18px;border-bottom:1p
 nav.seasons a{font:600 15px var(--display);letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);text-decoration:none;padding:8px 14px;border-bottom:3px solid transparent;margin-bottom:-1px}
 nav.seasons a:hover{color:var(--ink)}
 nav.seasons a[aria-current="page"]{color:var(--a);border-bottom-color:var(--a)}
+table.sortable th{cursor:pointer;user-select:none;white-space:nowrap}
+table.sortable th:hover{color:var(--ink)}
+table.sortable th[aria-sort]::after{content:" ▼";font-size:.8em;color:var(--a)}
+table.sortable th[aria-sort="ascending"]::after{content:" ▲"}
 table.expand tr.xrow{cursor:pointer}
 table.expand tr.xrow:hover td{background:var(--grid)}
 table.expand tr.xrow:focus-visible{outline:2px solid var(--a);outline-offset:-2px}
@@ -747,6 +751,27 @@ document.querySelectorAll('.trend-card').forEach(function (card) {
   function hide() { xh.style.display = 'none'; xd.style.display = 'none'; tip.hidden = true; }
   hit.addEventListener('pointermove', show); hit.addEventListener('pointerdown', show); hit.addEventListener('pointerleave', hide);
 });
+document.querySelectorAll('table.sortable').forEach(function (t) {
+  var body = t.tBodies[0], ths = t.tHead.rows[0].cells;
+  function val(row, i) {
+    var c = row.cells[i], v = c.hasAttribute('data-v') ? c.getAttribute('data-v') : c.textContent.replace(/[$,%]/g, '').trim();
+    var n = parseFloat(v);
+    return isNaN(n) || !/^-?[\d.]/.test(v) ? v.toLowerCase() : n;
+  }
+  Array.prototype.forEach.call(ths, function (th, i) {
+    th.setAttribute('tabindex', '0');
+    function sort() {
+      var rows = Array.prototype.slice.call(body.rows), text = typeof val(rows[0], i) === 'string';
+      var dir = th.getAttribute('aria-sort') === (text ? 'ascending' : 'descending') ? (text ? 'descending' : 'ascending') : (text ? 'ascending' : 'descending');
+      rows.sort(function (a, b) { var x = val(a, i), y = val(b, i); return (x < y ? -1 : x > y ? 1 : 0) * (dir === 'ascending' ? 1 : -1); });
+      rows.forEach(function (r) { body.appendChild(r); });
+      Array.prototype.forEach.call(ths, function (h) { h.removeAttribute('aria-sort'); });
+      th.setAttribute('aria-sort', dir);
+    }
+    th.addEventListener('click', sort);
+    th.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sort(); } });
+  });
+});
 document.querySelectorAll('.switch').forEach(function (box) {
   var sel = box.querySelector('select');
   function apply() { box.querySelectorAll('[data-panel]').forEach(function (p) { p.hidden = p.getAttribute('data-panel') !== sel.value; }); }
@@ -1376,14 +1401,16 @@ def alltime_sections(sums):
                 po[o]["titles"] += 1
     reg = {r["o"]: r for r in rows}
     ptrs = "".join(
-        f'<tr><td>{who(o)}</td><td class="n">{c["apps"]}</td><td class="n team">{rec_s(c["w"], c["l"])}</td>'
-        f'<td class="n">{f"{c["w"] / (c["w"] + c["l"]):.3f}" if c["w"] + c["l"] else "<span class=muted>—</span>"}</td><td class="n muted">{reg[o]["pct"]:.3f}</td>'
-        f'<td class="n">{c["finals"]}</td><td class="n">{"🏆" * c["titles"] or "<span class=muted>0</span>"}</td></tr>'
+        f'<tr><td data-v="{esc(name[o].lower())}">{who(o)}</td><td class="n">{c["apps"]}</td>'
+        f'<td class="n team" data-v="{c["w"] - c["l"] / 100}">{rec_s(c["w"], c["l"])}</td>'
+        f'<td class="n" data-v="{c["w"] / (c["w"] + c["l"]) if c["w"] + c["l"] else -1}">{f"{c["w"] / (c["w"] + c["l"]):.3f}" if c["w"] + c["l"] else "<span class=muted>—</span>"}</td>'
+        f'<td class="n muted">{reg[o]["pct"]:.3f}</td>'
+        f'<td class="n">{c["finals"]}</td><td class="n" data-v="{c["titles"]}">{"🏆" * c["titles"] or "<span class=muted>0</span>"}</td></tr>'
         for o, c in sorted(((o, po[o]) for o in owners), key=lambda kv: (-kv[1]["titles"], -kv[1]["w"], kv[1]["l"], -kv[1]["apps"])))
-    playoffs_html = (f'<div class="panel scroll"><table><thead><tr><th>Manager</th><th class="n">Trips</th><th class="n">Playoff record</th>'
+    playoffs_html = (f'<div class="panel scroll"><table class="sortable"><thead><tr><th>Manager</th><th class="n">Trips</th><th class="n">Playoff record</th>'
                      f'<th class="n">Playoff win %</th><th class="n">Regular-season win %</th><th class="n">Finals</th><th class="n">Titles</th></tr></thead>'
                      f'<tbody>{ptrs}</tbody></table></div><p class="note">Winners-bracket games only, including the 3rd-place game (the 5th-place game is left out). '
-                     'Compare the two win % columns to find the regular-season bullies and the playoff closers.</p>')
+                     'Compare the two win % columns to find the regular-season bullies and the playoff closers. Click a column header to sort.</p>')
 
     # record book
     allg = [(x["season"], w, a, sa, b, sb, pl) for x in sums for w, a, sa, b, sb, pl in x.get("games", [])]
@@ -1517,10 +1544,14 @@ def alltime_sections(sums):
                   'Draft classes add up every non-keeper pick. ★ = keeper using a first-round slot. The current season counts points so far.</p>')
 
     # manager tendencies
-    tcount, partners = collections.Counter(), collections.defaultdict(collections.Counter)
+    tcount, partners, tnet = collections.Counter(), collections.defaultdict(collections.Counter), collections.Counter()
     for x in sums:
         for t in x["trades"]:
             os_ = [sd["owner"] for sd in t["sides"] if sd["owner"]]
+            for sd in t["sides"]:
+                others = [o["total"] for o in t["sides"] if o is not sd]
+                if sd["owner"] and others:
+                    tnet[sd["owner"]] += sd["total"] - sum(others) / len(others)
             for o in os_:
                 tcount[o] += 1
                 for p in os_:
@@ -1538,15 +1569,18 @@ def alltime_sections(sums):
         fav = partners[o].most_common(1)
         f = faab[o]
         nseas = reg[o]["seasons"]
-        ttrs.append(f'<tr><td>{who(o)}</td><td class="n">{tcount[o]}</td>'
-                    f'<td>{(who(fav[0][0]) + f" <span class=muted>×{fav[0][1]}</span>") if fav else "<span class=muted>—</span>"}</td>'
-                    f'<td class="n">{f["bids"]}</td><td class="n">{f["won"]}</td><td class="n">${f["spent"]}</td><td class="n neg">${f["over"]}</td>'
-                    f'<td class="n team">{bench_[o]:,.0f}</td><td class="n muted">{bench_[o] / nseas:,.0f}</td></tr>')
-    tendencies = (f'<div class="panel scroll"><table><thead><tr><th>Manager</th><th class="n">Trades</th><th>Favorite trade partner</th>'
+        net = tnet[o]
+        ttrs.append(f'<tr><td data-v="{esc(name[o].lower())}">{who(o)}</td><td class="n">{tcount[o]}</td>'
+                    f'<td class="n team {"pos" if net > 0 else "neg" if net < 0 else "muted"}" data-v="{net:.1f}">{signed(net, 0) if tcount[o] else "—"}</td>'
+                    f'<td data-v="{esc(name[fav[0][0]].lower()) if fav else "~"}">{(who(fav[0][0]) + f" <span class=muted>×{fav[0][1]}</span>") if fav else "<span class=muted>—</span>"}</td>'
+                    f'<td class="n">{f["bids"]}</td><td class="n">{f["won"]}</td><td class="n" data-v="{f["spent"]}">${f["spent"]}</td><td class="n neg" data-v="{f["over"]}">${f["over"]}</td>'
+                    f'<td class="n team" data-v="{bench_[o]:.1f}">{bench_[o]:,.0f}</td><td class="n muted" data-v="{bench_[o] / nseas:.1f}">{bench_[o] / nseas:,.0f}</td></tr>')
+    tendencies = (f'<div class="panel scroll"><table class="sortable"><thead><tr><th>Manager</th><th class="n">Trades</th><th class="n">Trade net</th><th>Favorite trade partner</th>'
                   f'<th class="n">Waiver bids</th><th class="n">Won</th><th class="n">FAAB spent</th><th class="n">Overbid</th>'
                   f'<th class="n">Points left on bench</th><th class="n">Per season</th></tr></thead><tbody>{"".join(ttrs)}</tbody></table></div>'
                   '<p class="note">All seasons, including this one so far. Overbid = how much winning claims beat the next-highest bid by '
-                  '(the whole bid when nobody else claimed the player). Bench points = the best possible lineup minus the one actually started, every week.</p>')
+                  '(the whole bid when nobody else claimed the player). Trade net = points the players a manager got scored for the rest of that season, minus what the other side got, over every trade. '
+                  'Bench points = the best possible lineup minus the one actually started, every week. Click a column header to sort.</p>')
 
     return [("alltime-standings", "All-time standings", standings), ("head-to-head", "Head to head", headtohead),
             ("finishes", "Where everyone finished", finishes), ("champions", "Champions and last places", champs),
