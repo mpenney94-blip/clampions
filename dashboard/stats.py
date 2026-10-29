@@ -578,13 +578,17 @@ def season_summary(lg):
     if lg.complete and lg.playoff_start:
         for m in winprob._fetch(f"https://api.sleeper.app/v1/league/{lg.id}/winners_bracket") or []:
             a, b, w = m.get("t1"), m.get("t2"), lg.playoff_start + m["r"] - 1
-            if a and b:
+            if a and b and m.get("p") != 5:  # the 5th-place game is two knocked-out teams, often with empty lineups
                 sc = {x["roster_id"]: x["points"] or 0.0 for x in lg.client.matchups(lg.id, w)}
                 games.append([w, own[a], round(sc.get(a, 0), 2), own[b], round(sc.get(b, 0), 2), True])
     pickups_ = sorted(pickups(lg), key=lambda a: -a["total"])[:15]
     return {
         "season": lg.season, "complete": lg.complete, "weeks": len(lg.weeks), "playoff_teams": lg.playoff_teams, "teams": teams,
         "keepers": keepers, "trades": trade_rows, "games": games,
+        "draft": [{"owner": by_name.get(z["team"]), "team": z["team"], "round": z["round"], "pick": z["pick"], "player": z["player"],
+                   "pos": z["pos"], "pts": round(z["pts"], 1), "value": round(z["value"], 1), "keeper": z["keeper"]} for z in draft(lg)],
+        "faab": {by_name[x["team"]]: {k: x[k] for k in ("bids", "won", "spent", "over")} for x in waiver_bids(lg)},
+        "bench": {by_name[x["team"]]: round(x["lost"], 1) for x in bench(lg)},
         "pickups": [{"player": a["player"], "pos": a["pos"], "owner": by_name.get(a["team"]), "team": a["team"], "bid": a["bid"],
                      "games": a["games"], "total": round(a["total"], 1)} for a in pickups_],
         "drops": [{"player": d["player"], "pos": d["pos"], "owner": by_name.get(d["team"]), "team": d["team"], "week": d["week"],
