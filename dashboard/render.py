@@ -115,6 +115,12 @@ table.sortable th{cursor:pointer;user-select:none;white-space:nowrap}
 table.sortable th:hover{color:var(--ink)}
 table.sortable th[aria-sort]::after{content:" ▼";font-size:.8em;color:var(--a)}
 table.sortable th[aria-sort="ascending"]::after{content:" ▲"}
+.totop{display:none;position:fixed;top:16px;right:16px;z-index:50;align-items:center;gap:4px;font:600 14px var(--display);
+ letter-spacing:.06em;text-transform:uppercase;text-decoration:none;color:var(--ink);background:var(--surface);
+ border:1px solid var(--rule);border-radius:999px;padding:8px 14px;box-shadow:0 4px 14px rgba(0,0,0,.14)}
+.totop:hover{border-color:var(--a);color:var(--a)}
+.totop:focus-visible{outline:2px solid var(--a);outline-offset:2px}
+@media (min-width:900px) and (hover:hover){.totop.show{display:flex}}
 table.expand tr.xrow{cursor:pointer}
 table.expand tr.xrow:hover td{background:var(--grid)}
 table.expand tr.xrow:focus-visible{outline:2px solid var(--a);outline-offset:-2px}
@@ -160,11 +166,25 @@ footer{margin-top:56px;color:var(--ink3);font-size:14px;border-top:1px solid var
 FONTS = '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Source+Sans+3:wght@400;600;700&display=swap">'
 
 
+TOTOP = """<a href="#" class="totop" aria-label="Back to top">↑ Top</a><script>
+(function () {
+  var b = document.querySelector('.totop');
+  function f() { b.classList.toggle('show', window.scrollY > 600); }
+  window.addEventListener('scroll', f, { passive: true }); f();
+  b.addEventListener('click', function (e) {
+    e.preventDefault();
+    window.scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    b.blur();
+  });
+})();
+</script>"""
+
+
 def page(title, body, desc=""):
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>{esc(title)}</title><meta name="description" content="{esc(desc)}">{FONTS}<style>{CSS}</style></head>
-<body><div class="wrap">{body}</div></body></html>"""
+<body><div class="wrap">{body}</div>{TOTOP}</body></html>"""
 
 
 def pct_s(p):
