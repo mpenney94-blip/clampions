@@ -1663,7 +1663,7 @@ def draft_board(d, teams):
     pos_i = {p: i for i, p in enumerate(POS_ORDER, 1)}
     cell = {(x["round"], x["slot"]): x for x in d["rows"]}
     first = {x["slot"]: x["team"] for x in d["rows"] if x["round"] == 1}
-    head = "".join(f'<th class="n" style="font-size:11px;white-space:normal;min-width:84px">{esc(first.get(sl, ""))}</th>' for sl in d["slots"])
+    head = "".join(f'<th class="n" style="font-size:11px;white-space:normal;min-width:98px">{esc(first.get(sl, ""))}</th>' for sl in d["slots"])
     trs = []
     for rd in range(1, d["rounds"] + 1):
         tds = []
@@ -1674,15 +1674,14 @@ def draft_board(d, teams):
                 continue
             c = pos_i.get(x["pos"], 0)
             bg = f"background:color-mix(in srgb,var(--c{c}) 22%,var(--surface))" if c else ""
-            name = x["player"].split(" ", 1)[-1] if len(x["player"]) > 14 else x["player"]
             tip = (f'#{x["pick"]} {x["player"]} ({x["pos"]}) to {x["team"]}: {x["pts"]:.1f} pts, {x["value"]:+.1f} vs. slot'
                    + (f'; {x["gone"]}' if x["gone"] else "") + ("; keeper" if x["keeper"] else ""))
             tds.append(f'<td style="{bg};font-size:12px;line-height:1.25;padding:5px 6px" title="{esc(tip)}">'
-                       f'<b{" class=gone" if x["gone"] else ""}>{esc(name)}</b>{"<span class=star>★</span>" if x["keeper"] else ""}'
+                       f'<b{" class=gone" if x["gone"] else ""}>{esc(x["player"])}</b>{"<span class=star>★</span>" if x["keeper"] else ""}'
                        f'<div class="{"pos" if x["value"] >= 0 else "neg"}" style="font-size:11px">{x["pts"]:.0f}</div></td>')
         trs.append(f'<tr><td class="muted" style="font-size:12px">R{rd}</td>{"".join(tds)}</tr>')
     legend = '<div class="legend">' + "".join(f'<span><i style="background:var(--c{i})"></i>{p}</span>' for p, i in pos_i.items()) + '</div>'
-    return (f'<div class="panel scroll">{legend}<table class="picks board" style="min-width:{90 * len(d["slots"])}px"><thead><tr><th></th>{head}</tr></thead>'
+    return (f'<div class="panel scroll">{legend}<table class="picks board" style="min-width:{104 * len(d["slots"])}px"><thead><tr><th></th>{head}</tr></thead>'
             f'<tbody>{"".join(trs)}</tbody></table></div>'
             '<p class="note">The whole draft, by round and draft slot (columns are named for the team that picked first in that slot). '
             'Colors = position; the number is the player’s points this season, green if he beat his slot and red if not. '
