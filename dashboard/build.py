@@ -324,11 +324,27 @@ def alltime_page(name, tabs, sums):
     secs = render.alltime_sections(sums)
     talk = ("rivalries", "Rivalry trash talk", render.column(*commentary.write("rivalry", render.rivalry_facts(sums)), "the league’s head-to-head history"))
     secs.insert(2, talk)  # right after head to head
-    toc = ('<nav class="toc" aria-label="Sections"><div class="grp"><span>All-time</span>'
-           + "".join(f'<a href="#{k}">{esc(t)}</a>' for k, t, _ in secs) + '</div></nav>')
+    S = {k: (t, h) for k, t, h in secs}
+    groups = [
+        ("at-standings", "Standings", "Who has won, who has lost, and where everyone finished.",
+         ["alltime-standings", "finishes", "champions", "playoff-records"]),
+        ("at-rivalries", "Rivalries", "Every manager against every other manager.", ["head-to-head", "rivalries", "streaks"]),
+        ("at-records", "Records", "The best and worst single games and seasons, and who the schedule has favored.", ["record-book", "luck"]),
+        ("at-moves", "Roster moves", "Keepers, drafts, trades and the waiver wire across every season.",
+         ["keepers", "draft-history", "alltime-trades", "tendencies", "moves"]),
+    ]
+    groups = [(gid, g, blurb, [k for k in keys if k in S]) for gid, g, blurb, keys in groups]
+    placed = {k for *_, keys in groups for k in keys}
+    if any(k not in placed for k in S):  # anything new lands in a catch-all group rather than vanishing
+        groups.append(("at-more", "More", "", [k for k in S if k not in placed]))
+    toc = ('<nav class="toc" aria-label="Sections">'
+           + "".join(f'<div class="grp"><span><a href="#{gid}" style="all:unset;cursor:pointer">{g}</a></span>'
+                     + "".join(f'<a href="#{k}">{esc(S[k][0])}</a>' for k in keys) + '</div>' for gid, g, _, keys in groups)
+           + '</nav>')
     body = (f'{tabs}<header class="site"><div><div class="eyebrow">{sums[-1]["season"]}–{sums[0]["season"]} on Sleeper</div>'
             f'<h1>{esc(name)}: all-time</h1></div></header>{toc}'
-            + "".join(f'<section id="{k}"><h2>{esc(t)}</h2>{h}</section>' for k, t, h in secs)
+            + "".join(f'<div class="group-head" id="{gid}"><h2>{g}</h2><p>{blurb}</p></div>'
+                      + "".join(f'<section id="{k}"><h2>{esc(S[k][0])}</h2>{S[k][1]}</section>' for k in keys) for gid, g, blurb, keys in groups)
             + render.footer(dt.datetime.now(dt.timezone.utc)) + render.HIGHLIGHT_JS)
     return render.page(f"{name} all-time", body, f"{name}: all-time standings, finishes, champions, keepers, trades, pickups and drops.")
 
