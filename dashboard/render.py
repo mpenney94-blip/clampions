@@ -66,6 +66,9 @@ tr:last-child td{border-bottom:0}
 .swap td.c{text-align:center;font-weight:700;min-width:38px;border:2px solid var(--surface);padding:6px 4px}
 .swap td.self{outline:2.5px solid var(--ink);outline-offset:-3px}
 .swap th.col{height:130px;vertical-align:bottom;padding:0}
+th.ang{height:170px;vertical-align:bottom;padding:0;text-align:left!important}
+th.ang div{transform:translate(16px,-6px) rotate(-50deg);transform-origin:bottom left;width:24px;white-space:nowrap;text-transform:none;
+ letter-spacing:0;font-size:13px;font-weight:600;color:var(--ink2)}
 .swap th.col div{transform:translate(14px,-4px) rotate(-50deg);transform-origin:bottom left;width:24px;white-space:nowrap;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink2)}
 .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:14px}
 .wp-card{display:grid;gap:4px}
@@ -1350,8 +1353,7 @@ def alltime_sections(sums):
                 if playoff:
                     c["pw" if mine > theirs else "pl"] += 1
     order = [r["o"] for r in rows]
-    short = lambda o: esc(name[o] if len(name[o]) <= 14 else name[o][:13] + "…")
-    hhead = "".join(f'<th class="n" style="writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;padding:6px 2px" title="{esc(name[o])}">{short(o)}</th>' for o in order)
+    hhead = "".join(f'<th class="ang" title="{esc(name[o])}"><div>{esc(name[o])}</div></th>' for o in order)
     htrs = []
     for me in order:
         cells = []
@@ -1375,7 +1377,7 @@ def alltime_sections(sums):
                          f'<span style="position:relative">{c["w"]}-{c["l"]}{f"-{c["t"]}" if c["t"] else ""}{star}</span></td>')
         tot = [h2h[(me, o)] for o in order if (me, o) in h2h]
         htrs.append(f'<tr><td style="white-space:nowrap">{who(me)}</td>{"".join(cells)}'
-                    f'<td class="n team">{sum(c["w"] for c in tot)}-{sum(c["l"] for c in tot)}</td></tr>')
+                    f'<td class="n team" style="padding-left:56px">{sum(c["w"] for c in tot)}-{sum(c["l"] for c in tot)}</td></tr>')
     # rivalries worth calling out
     pairs = []
     for (a, b), c in h2h.items():
@@ -1399,7 +1401,7 @@ def alltime_sections(sums):
                  + rival("Most meetings", most, lambda c, g: f"{g} games, avg {c['pf'] / g:.1f}–{c['pa'] / g:.1f}")
                  + (rival("Closest rivalry", closest, lambda c, g: f"{(c['pf'] - c['pa']) / g:+.1f} points a game") if closest else "")
                  + '</div>')
-    headtohead = (tiles + f'<div class="panel scroll"><table class="grid-t" style="font-size:13px"><thead><tr><th>Manager ↓ vs →</th>{hhead}<th class="n">Total</th></tr></thead>'
+    headtohead = (tiles + f'<div class="panel scroll"><table class="grid-t" style="font-size:13px"><thead><tr><th>Manager ↓ vs →</th>{hhead}<th class="n" style="padding-left:56px;vertical-align:bottom">Total</th></tr></thead>'
                   f'<tbody>{"".join(htrs)}</tbody></table></div>'
                   '<p class="note">Each row is that manager’s record against the column manager: regular season plus playoff games '
                   '(consolation and 5th-place games left out). Green = winning record, red = losing; * = includes playoff meetings. Hover a cell for the playoff '
