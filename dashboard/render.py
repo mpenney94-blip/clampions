@@ -1201,29 +1201,24 @@ def alltime_sections(sums):
     trs = []
     for r in rows:
         po_pct = r["po"] / r["done"] if r["done"] else 0
-        data = (f'data-pct="{r["pct"]:.4f}" data-wins="{r["w"]}" data-pf="{r["pf"]:.1f}" data-pa="{r["pa"]:.1f}" data-ppg="{r["ppg"]:.2f}" '
-                f'data-po="{po_pct + r["po"] / 100:.4f}" data-titles="{r["titles"] + r["pct"] / 10:.4f}" data-last="{r["last"] + (1 - r["pct"]) / 10:.4f}"')
-        trs.append(f'<tr {data}><td class="muted rank"></td><td>{who(r["o"])}</td><td class="n">{r["seasons"]}</td>'
-                   f'<td class="n team">{r["w"]}-{r["l"]}{f"-{r["t"]}" if r["t"] else ""}</td><td class="n">{r["pct"]:.3f}</td>'
+        trs.append(f'<tr><td data-v="{esc(name[r["o"]].lower())}">{who(r["o"])}</td><td class="n">{r["seasons"]}</td>'
+                   f'<td class="n team" data-v="{r["w"] + r["t"] / 2 - r["l"] / 1000}">{r["w"]}-{r["l"]}{f"-{r["t"]}" if r["t"] else ""}</td>'
+                   f'<td class="n">{r["pct"]:.3f}</td>'
                    f'<td class="n">{r["pf"]:,.1f}</td><td class="n">{r["pa"]:,.1f}</td><td class="n">{r["ppg"]:.1f}</td>'
-                   f'<td class="n">{r["po"]}/{r["done"]} <span class="muted">({po_pct:.0%})</span></td>'
-                   f'<td class="n">{"🏆" * r["titles"] or "<span class=muted>0</span>"}</td>'
-                   f'<td class="n">{"💩" * r["last"] or "<span class=muted>0</span>"}</td>'
-                   f'<td class="n">{_ordinal(r["best"]) if r["best"] else "—"}</td></tr>')
-    controls = _sort_controls("alltime", [("pct", "Win %", "Best all-time win percentage first"), ("wins", "Wins", "Most wins first"),
-                                          ("pf", "Points for", "Most points scored first"), ("pa", "Points against", "Most points allowed first"),
-                                          ("ppg", "Points per game", "Highest scoring average first"), ("po", "Playoff %", "Most playoff trips first"),
-                                          ("titles", "Championships", "Most titles first"), ("last", "Last places", "Most last-place finishes first")])
+                   f'<td class="n" data-v="{po_pct + r["po"] / 100:.4f}">{r["po"]}/{r["done"]} <span class="muted">({po_pct:.0%})</span></td>'
+                   f'<td class="n" data-v="{r["titles"]}">{"🏆" * r["titles"] or "<span class=muted>0</span>"}</td>'
+                   f'<td class="n" data-v="{r["last"]}">{"💩" * r["last"] or "<span class=muted>0</span>"}</td>'
+                   f'<td class="n" data-v="{-(r["best"] or 99)}">{_ordinal(r["best"]) if r["best"] else "—"}</td></tr>')
     cur = [x for x in sums if not x["complete"]]
-    standings = (f'<div class="panel scroll sortbars">{controls}<table><thead><tr><th></th><th>Manager (current team)</th><th class="n">Seasons</th>'
-                 '<th class="n">Record</th><th class="n">Win %</th><th class="n">Points for</th><th class="n">Points against</th><th class="n">PPG</th>'
+    standings = (f'<div class="panel scroll"><table class="sortable"><thead><tr><th>Manager (current team)</th><th class="n">Seasons</th>'
+                 '<th class="n">Record</th><th class="n" aria-sort="descending">Win %</th><th class="n">Points for</th><th class="n">Points against</th><th class="n">PPG</th>'
                  '<th class="n">Playoffs</th><th class="n">Titles</th><th class="n">Last place</th><th class="n">Best finish</th></tr></thead>'
                  f'<tbody>{"".join(trs)}</tbody></table></div>'
                  f'<p class="note">Regular-season games only, {seasons[-1]}–{seasons[0]}'
                  + (f' ({cur[0]["season"]} so far, through week {cur[0]["weeks"]})' if cur else "")
                  + '. Playoffs, titles, last places and best finish count finished seasons only. Last place = finished '
                  f'{_ordinal(n_teams)}: lost every game in the toilet bowl. Managers are tracked by Sleeper account, so team renames stay together; '
-                 'hover a name for its old team names.</p>')
+                 'hover a name for its old team names. Click a column header to sort.</p>')
 
     # finishes by year
     head = "".join(f'<th class="n">{x["season"]}</th>' for x in sums)
