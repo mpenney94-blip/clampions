@@ -825,11 +825,12 @@ def playoff_table(rows, prev, n_playoff, div_names):
                    f'<td class="n">{_move(x["playoffs"] - p0)}</td><td class="n">{_pct(x["bye"])}</td><td class="n">{_pct(x["first"])}</td>'
                    f'<td class="n">{_pct(x["last"])}</td><td class="n">{x["proj_wins"]:.1f}</td></tr>')
     return (f'<div class="panel scroll"><table><thead><tr><th>Team</th><th>Division</th><th class="n">Record</th><th>Make playoffs</th>'
-            f'<th class="n">This week</th><th class="n">Bye</th><th class="n">#1 seed</th><th class="n">Last place</th><th class="n">Proj. wins</th></tr></thead>'
+            f'<th class="n">This week</th><th class="n">Bye</th><th class="n">#1 seed</th><th class="n">Worst record</th><th class="n">Proj. wins</th></tr></thead>'
             f'<tbody>{"".join(trs)}</tbody></table></div>'
             f'<p class="note">10,000 simulations of the rest of the regular season using the real remaining schedule. Each team’s weekly score is drawn '
-            f'from its own scoring so far, pulled toward the league average early in the year. {n_playoff} teams make the playoffs: both division '
-            'winners get the byes, then the best remaining records, with points for as the tiebreaker. Sleeper’s exact tiebreakers may differ. '
+            f'from its own scoring so far, pulled toward the league average early in the year. {n_playoff} teams make the playoffs: the top two '
+            'in each division are in, the division winners get the byes, and the last spots go to the best remaining records as wild cards. '
+            'Every tie goes to points for. “Worst record” is the chance of finishing with the league’s worst regular-season record. '
             '“This week” is the change since last week’s results.</p>')
 
 

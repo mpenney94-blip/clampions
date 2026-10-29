@@ -68,9 +68,14 @@ def playoff_odds(lg, through=None, sims=10000, seed=7):
         key = lambda r: (wins[r], pf[r])
         order = sorted(rids, key=key, reverse=True)
         if len(divs) > 1 and None not in divs:
-            winners = sorted((max(m, key=key) for m in divs.values()), key=key, reverse=True)
-            rest = [r for r in order if r not in winners]
-            seeds = winners + rest
+            # league rules: each division's top two are in, the division winners get the byes, the last spots are wild
+            # cards for the best remaining records; every tie goes to points for
+            ranked = {d: sorted(m, key=key, reverse=True) for d, m in divs.items()}
+            winners = sorted((m[0] for m in ranked.values()), key=key, reverse=True)
+            runners = [m[1] for m in ranked.values() if len(m) > 1]
+            wild = [r for r in order if r not in winners and r not in runners][:max(0, n_po - len(winners) - len(runners))]
+            middle = sorted(runners + wild, key=key, reverse=True)
+            seeds = winners + middle + [r for r in order if r not in winners and r not in middle]
         else:
             seeds = order
         for i, r in enumerate(seeds):
