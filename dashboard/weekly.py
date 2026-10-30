@@ -483,7 +483,7 @@ def flagged_plays(lg):
             by_name[winprob._norm(v["full_name"])].append(k)
     box = {}  # game id -> {espn id: (team, normalized name)}, for players Sleeper has no ESPN id for (often rookies)
 
-    def resolve(espn, g, w):
+    def resolve(espn, g, w, token=None):
         if espn in by_espn:
             return by_espn[espn]
         if g["id"] not in box:
@@ -497,6 +497,13 @@ def flagged_plays(lg):
             if (lg.proj(w)[1].get(pid) or (lg.players.get(pid) or {}).get("team")) == team:
                 by_espn[espn] = pid
                 return pid
+        if token:  # not in the box score (a called-back catch can be a player's only touch): match "R.Rice" on either team
+            teams = set(g["teams"])
+            hits = [pid for pid, v in lg.players.items() if v.get("position") in ("QB", "RB", "WR", "TE")
+                    and (lg.proj(w)[1].get(pid) or v.get("team")) in teams and _matches(lg, pid, token)]
+            if len(hits) == 1:
+                by_espn[espn] = hits[0]
+                return hits[0]
         return None
 
     out = []
@@ -525,14 +532,17 @@ def flagged_plays(lg):
                     ref = ((x.get("athlete") or {}).get("$ref") or "")
                     if "/athletes/" in ref:
                         parts.setdefault(x.get("type"), ref.split("/athletes/")[1].split("?")[0])
+                name = r"([A-Z][a-z]?\.[A-Z][\w'-]+(?: [A-Z][\w'-]+)?)"
+                lead = re.match(r"(?:\([^)]*\) )*" + name, pre)
+                catcher = re.search(r" pass [^.]*?to " + name, pre)
                 if "rusher" in parts:
-                    who = [(parts["rusher"], "run")]
+                    who = [(parts["rusher"], "run", lead and lead.group(1))]
                 elif "passer" in parts and "receiver" in parts:
-                    who = [(parts["passer"], "pass"), (parts["receiver"], "catch")]
+                    who = [(parts["passer"], "pass", lead and lead.group(1)), (parts["receiver"], "catch", catcher and catcher.group(1))]
                 else:
                     continue
-                for espn, kind in who:
-                    pid = resolve(espn, g, w)
+                for espn, kind, token in who:
+                    pid = resolve(espn, g, w, token)
                     if not pid:
                         continue
                     team = lg.proj(w)[1].get(pid) or (lg.players.get(pid) or {}).get("team")
