@@ -253,7 +253,8 @@ def waiver_bids(lg):
         if t["type"] == "waiver" and t.get("adds"):
             for pid in t["adds"]:
                 runs[(pid, t["status_updated"] // 60000)].append(t)
-    out = {r: {"team": n, "bids": 0, "won": 0, "spent": 0, "over": 0, "claims": []} for r, n in lg.team.items()}
+    out = {r: {"team": n, "bids": 0, "won": 0, "spent": 0, "over": 0, "claims": [], "biggest": {"bid": 0, "player": None, "week": None}}
+           for r, n in lg.team.items()}
     for (pid, _), ts in runs.items():
         bid = lambda t: (t.get("settings") or {}).get("waiver_bid", 0)
         win = next((t for t in ts if t["status"] == "complete"), None)
@@ -268,6 +269,8 @@ def waiver_bids(lg):
                 out[r]["won"] += 1
                 out[r]["spent"] += bid(t)
                 out[r]["over"] += c["over"]
+                if bid(t) > out[r]["biggest"]["bid"]:
+                    out[r]["biggest"] = {"bid": bid(t), "player": c["player"], "week": c["week"]}
             elif win is not None and "claimed by another" in note:
                 c["why"] = f'{lg.team[win["adds"][pid]]} won at ${bid(win)}'
             else:
@@ -601,7 +604,7 @@ def season_summary(lg):
         "keepers": keepers, "trades": trade_rows, "games": games,
         "draft": [{"owner": by_name.get(z["team"]), "team": z["team"], "round": z["round"], "pick": z["pick"], "player": z["player"],
                    "pos": z["pos"], "pts": round(z["pts"], 1), "value": round(z["value"], 1), "keeper": z["keeper"]} for z in draft(lg)],
-        "faab": {by_name[x["team"]]: {k: x[k] for k in ("bids", "won", "spent", "over")} for x in waiver_bids(lg)},
+        "faab": {by_name[x["team"]]: {k: x[k] for k in ("bids", "won", "spent", "over", "biggest")} for x in waiver_bids(lg)},
         "bench": {by_name[x["team"]]: round(x["lost"], 1) for x in bench(lg)},
         "pickups": [{"player": a["player"], "pos": a["pos"], "owner": by_name.get(a["team"]), "team": a["team"], "bid": a["bid"],
                      "games": a["games"], "total": round(a["total"], 1)} for a in pickups_],
