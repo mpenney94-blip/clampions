@@ -712,8 +712,14 @@ def kicker_profile(lg):
             bands.append((label, made, made + miss))
         games = sum(1 for w in lg.weeks if pid in lg.played[w])
         att = sum(b[2] for b in bands)
+        sc = lg.scoring
+        miss_keys = ("0_19", "20_29", "30_39", "40_49", "50_59", "60p")
+        # points the misses cost under this league's scoring (FG misses by distance, plus missed extra points)
+        lost = sum(tot(f"fgmiss_{k}") * sc.get(f"fgmiss_{k}", 0) for k in miss_keys) + tot("fgmiss") * sc.get("fgmiss", 0) \
+            + tot("xpmiss") * sc.get("xpmiss", 0)
         out.append({"player": lg.name_of(pid), "nfl": (lg.players.get(pid) or {}).get("team"), "owners": owned, "bands": bands,
-                    "xp": (tot("xpm"), tot("xpa")), "att": att, "long_share": (bands[2][2] + bands[3][2]) / att if att else 0,
+                    "xp": (tot("xpm"), tot("xpa")), "att": att, "made": sum(b[1] for b in bands), "missed": att - sum(b[1] for b in bands),
+                    "lost": lost, "long_share": (bands[2][2] + bands[3][2]) / att if att else 0,
                     "season_long": max((r.get("fgm_lng", 0) or 0 for r in rows), default=0), "career_long": _career_long(lg, pid),
                     "ppg": sum(lg.pts[pid].get(w, 0) for w in lg.weeks if pid in lg.played[w]) / games if games else 0, "games": games})
     return sorted(out, key=lambda x: -x["ppg"])
