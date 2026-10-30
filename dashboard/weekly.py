@@ -448,6 +448,6 @@ def opponent_peaks(lg, top=2, min_games=3, floor=15.0):
                     actual += 1
                     extra += v - avg
                     hits.append({"week": w, "player": lg.name_of(p), "pos": lg.pos_of(p), "opp": lg.team[opp], "pts": v, "avg": avg,
-                                 "best": v >= g[0][0]})
+                                 "rank": 1 + sum(1 for x, _ in g if x > v)})  # 1 = season best, ties share the higher rank
         out.append({"team": name, "actual": actual, "expected": expected, "extra": extra, "hits": sorted(hits, key=lambda h: h["week"])})
     return sorted(out, key=lambda x: -(x["actual"] - x["expected"]))

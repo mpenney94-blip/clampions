@@ -124,6 +124,10 @@ table.sortable th[aria-sort="ascending"]::after{content:" ▲"}
 .totop:hover{border-color:var(--a);color:var(--a)}
 .totop:focus-visible{outline:2px solid var(--a);outline-offset:2px}
 @media (min-width:900px) and (hover:hover){.totop.show{display:flex}}
+.chip.medal{border:0;color:#3b2f00;padding:1px 7px}
+.chip.m1{background:#f2c94c}
+.chip.m2{background:#cfd4da;color:#2b3036}
+.chip.m3{background:#d9a066;color:#3a2410}
 table.expand tr.xrow{cursor:pointer}
 table.expand tr.xrow:hover td{background:var(--grid)}
 table.expand tr.xrow:focus-visible{outline:2px solid var(--a);outline-offset:-2px}
@@ -1753,6 +1757,11 @@ def payoff_table(d):
             'with the average points vs. slot and the number of picks underneath.</p>')
 
 
+def _medal(rank):
+    label = {1: "season best", 2: "2nd best", 3: "3rd best"}.get(rank)
+    return f' <span class="chip medal m{rank}">{label}</span>' if label else ""
+
+
 def peaks_table(rows, top=2):
     key = f"pk{top}"
     which = {1: "best game", 2: "best or second-best game", 3: "best, second- or third-best game"}[top]
@@ -1773,7 +1782,7 @@ def peaks_table(rows, top=2):
             return '<span class="muted">No opponent has had a career day against this team yet.</span>'
         return ('<table class="picks">' + "".join(
             f'<tr><td class="muted">Wk {h["week"]}</td><td><b>{esc(h["player"])}</b> <span class="muted">{h["pos"] or ""}</span>'
-            f'{" <span class=chip>season best</span>" if h["best"] else ""}</td><td class="muted">for {esc(h["opp"])}</td>'
+            f'{_medal(h["rank"])}</td><td class="muted">for {esc(h["opp"])}</td>'
             f'<td class="n team">{h["pts"]:.1f}</td><td class="n muted">avg {h["avg"]:.1f}</td>'
             f'<td class="n neg">+{h["pts"] - h["avg"]:.1f}</td></tr>' for h in x["hits"]) + '</table>')
     controls = _sort_controls(f"peaks{top}", [("diff", "Above expected", "Most victimized by career days first"),
