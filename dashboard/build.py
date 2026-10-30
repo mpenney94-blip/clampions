@@ -267,7 +267,7 @@ def build(league_id, out, with_winprob=True, tabs=""):
         "overbids": ("Waiver overbids", '<p class="lede">How much FAAB each team spent beyond what it took to win, and how often its claims came through.</p>'
                      + render.overbid_table(stats.waiver_bids(lg), lg.info["settings"].get("waiver_budget", 100))),
         "drops": ("Drops that came back to bite", '<p class="lede">The worst cuts of the season: players who went on to produce after their team let them go.</p>'
-                  + render.drop_table(stats.drop_regrets(lg))),
+                  + render.drop_table(stats.drop_regrets(lg, top=6))),
         "position": ("Position strength", render.position_table(*weekly.position_strength(lg))),
         "draft-grades": ("Draft grades", render.draft_grades(dx)) if dx else None,
         "draft-board": ("Draft board", render.draft_board(dx, lg.team)) if dx else None,
