@@ -1856,17 +1856,35 @@ def flagged_section(d):
 
     def big(p):
         what, why = _flag_play(p)
-        by = f'<div class="muted" style="font-size:12px">Wk {p["week"]} · {esc(p["game"])}' + (f' · started by {esc(p["started_by"])}' if p.get("started_by") else "") + '</div>'
-        return f'<td><b>{esc(p["player"])}</b> {what}{by}<div style="font-size:12.5px">{why}</div></td><td class="n team neg">−{p["pts"]:.1f}</td>'
-    bl = "".join(f'<tr><td class="muted">{i}</td>{big(p)}</tr>' for i, p in enumerate(d["biggest"], 1))
-    pl = "".join(f'<tr><td class="muted">{i}</td><td><b>{esc(x["player"])}</b> <span class="muted">{x["pos"] or ""}</span></td>'
-                 f'<td class="n muted">{x["n"]} plays</td><td class="n team neg">−{x["pts"]:.1f}</td></tr>' for i, x in enumerate(d["players"], 1))
-    lists = (f'<div class="grid2" style="margin-top:14px"><div class="panel"><h3>Biggest plays wiped out</h3><table>{bl}</table></div>'
-             f'<div class="panel"><h3>Players who lost the most</h3><table>{pl}</table></div></div>')
+        by = f'<div class="muted" style="font-size:12px">Wk {p["week"]} · {esc(p["game"])}</div>'
+        return (f'<td><b>{esc(p["player"])}</b> {what}<div style="font-size:13px">started for <b class="team">{esc(p["fantasy"])}</b></div>{by}'
+                f'<div style="font-size:12.5px">{why}</div></td><td class="n team neg">−{p["pts"]:.1f}</td>')
+    bl = "".join(f'<tr><td class="muted">{i}</td>{big(p)}</tr>' for i, p in enumerate(d["biggest"], 1)) or \
+        '<tr><td class="muted">No starter has lost a play yet.</td></tr>'
+
+    def pdetail(x):
+        trs = []
+        for p in x["plays"]:
+            what, why = _flag_play(p)
+            role = ('<span class="chip pos">starter</span>' if p["started"] else '<span class="chip" style="color:var(--ink3)">bench</span>')
+            trs.append(f'<tr><td class="muted">Wk {p["week"]}</td><td>{what}<div style="font-size:12px">{why}</div></td>'
+                       f'<td style="white-space:nowrap"><span class="team">{esc(p["fantasy"])}</span> {role}</td><td class="n neg">−{p["pts"]:.1f}</td></tr>')
+        return f'<table class="picks">{"".join(trs)}</table>'
+    pl = "".join(
+        f'<tr class="xrow" tabindex="0" role="button" aria-expanded="false" aria-controls="flp-{i}"><td class="muted">{i}</td>'
+        f'<td><span class="chev" aria-hidden="true">▸</span> <b>{esc(x["player"])}</b> <span class="muted">{x["pos"] or ""}</span>'
+        f'<div class="muted" style="font-size:12px">{esc(" → ".join(x["teams"]))}</div></td>'
+        f'<td class="n muted">{x["n"]} play{"" if x["n"] == 1 else "s"}</td><td class="n team neg">−{x["pts"]:.1f}'
+        f'<div class="muted" style="font-size:11px;font-weight:400">{x["started_pts"]:.1f} while starting</div></td></tr>'
+        f'<tr class="xdetail" id="flp-{i}" hidden><td colspan="4">{pdetail(x)}</td></tr>' for i, x in enumerate(d["players"], 1))
+    lists = (f'<div class="grid2" style="margin-top:14px"><div class="panel"><h3>Biggest plays wiped out</h3>'
+             f'<p class="muted" style="font-size:13px;margin:0 0 6px">Only plays by a player in a fantasy starting lineup that week.</p><table>{bl}</table></div>'
+             f'<div class="panel"><h3>Players who lost the most</h3>'
+             f'<p class="muted" style="font-size:13px;margin:0 0 6px">Plays while on a fantasy roster, starting or on the bench. Click a player for the plays.</p>'
+             f'<table class="expand">{pl}</table></div></div>')
     return (table + lists +
             '<p class="note">Runs and completions that were called back by an accepted penalty (“No Play”), plus touchdowns taken away by a '
             'flag during the play (the yards up to the flag still count, so only the score and the yards after it are lost). Scored with this league’s settings: '
-            'rushing, receiving and kick/punt return yards, the half point per catch, passing yards and any touchdown that came off the board. Returns count when the whole return was wiped out, or when the return team’s own flag took back the yards after the foul. The team table counts '
-            'only players in that fantasy team’s starting lineup that week; the lists count every player. A flag on the defense usually gave the '
+            'rushing, receiving and kick/punt return yards, the half point per catch, passing yards and any touchdown that came off the board. Returns count when the whole return was wiped out, or when the return team’s own flag took back the yards after the foul. The team table and the biggest plays count only players in a fantasy starting lineup that week; the player list counts plays while on any fantasy roster. A flag on the defense usually gave the '
             'offense yards back, so it’s shown separately. Penalties enforced after a play that still counted, sacks, incompletions and kicks are left out. '
             'From ESPN’s play-by-play. Click a team for its plays.</p>')

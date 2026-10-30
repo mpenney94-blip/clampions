@@ -618,14 +618,22 @@ def flagged_away(lg):
                       "own": sum(p["pts"] for p in mine if p["own"]), "theirs": sum(p["pts"] for p in mine if not p["own"]),
                       "total": sum(p["pts"] for p in mine)})
     teams.sort(key=lambda t: -t["total"])
-    who = {}
-    for (r, w), ps in starters.items():
-        for p in ps:
-            who[(p, w)] = lg.team[r]
-    biggest = sorted((dict(p, started_by=who.get((p["pid"], p["week"]))) for p in plays), key=lambda p: -p["pts"])[:10]
-    per = collections.defaultdict(lambda: {"pts": 0.0, "n": 0})
-    for p in plays:
-        per[(p["pid"], p["player"], p["pos"])]["pts"] += p["pts"]
-        per[(p["pid"], p["player"], p["pos"])]["n"] += 1
-    players = sorted(({"player": k[1], "pos": k[2], **v} for k, v in per.items()), key=lambda x: -x["pts"])[:10]
+    on = {}  # (player, week) -> (fantasy team, in the starting lineup?)
+    for w in lg.weeks:
+        for m in lg.matchups[w]:
+            for p in m.get("players") or []:
+                on[(p, w)] = (lg.team[m["roster_id"]], p in m["starters"])
+    tagged = [dict(p, fantasy=on.get((p["pid"], p["week"]), (None, False))[0], started=on.get((p["pid"], p["week"]), (None, False))[1])
+              for p in plays]
+    biggest = sorted((p for p in tagged if p["started"]), key=lambda p: -p["pts"])[:10]
+    per = collections.defaultdict(list)
+    for p in tagged:
+        if p["fantasy"]:  # only plays while the player was on someone's roster
+            per[p["pid"]].append(p)
+    players = []
+    for pid, ps in per.items():
+        owners = list(dict.fromkeys(p["fantasy"] for p in sorted(ps, key=lambda p: p["week"])))
+        players.append({"player": ps[0]["player"], "pos": ps[0]["pos"], "teams": owners, "plays": sorted(ps, key=lambda p: (p["week"], -p["pts"])),
+                        "pts": sum(p["pts"] for p in ps), "n": len(ps), "started_pts": sum(p["pts"] for p in ps if p["started"])})
+    players = sorted(players, key=lambda x: -x["pts"])[:10]
     return {"teams": teams, "biggest": biggest, "players": players, "n": len(plays)}
