@@ -245,6 +245,8 @@ def build(league_id, out, with_winprob=True, tabs=""):
         "projections": ("Beating the projections", render.projection_table(proj_rows, proj_over, proj_under, last)),
         "peaks": ("Opponents' career days", '<p class="lede">Did opponents keep having their best game of the year against you?</p>'
                   + render.peaks_switch({k: weekly.opponent_peaks(lg, k) for k in (1, 2, 3)})),
+        "flags": ("Flagged away", '<p class="lede">Fantasy points erased when a big play got called back for a penalty.</p>'
+                  + render.flagged_section(weekly.flagged_away(lg))),
         "close": ("Close games", render.close_table(*weekly.close_games(lg))),
         "schedule": ("Schedule swap", '<p class="lede">Every team’s record if it had played each other team’s schedule.</p>' + render.swap_table(order, grid)),
         "carry": ("Who carried each team", render.carry_bars(stats.carry(lg))),
@@ -276,7 +278,7 @@ def build(league_id, out, with_winprob=True, tabs=""):
         ("this-week", "This week", f"What happened in week {last} and what’s coming next. These change every week.",
          [k for k, _, _ in hub] + ["history"]),
         ("scoring", "Scoring", f"Weeks 1–{last}: how many points every team put up, how lucky it was, and where the points came from.",
-         ["standings", "trends", "projections", "close", "peaks", "schedule", "carry", "boom-bust", "team-grid"]),
+         ["standings", "trends", "projections", "close", "peaks", "flags", "schedule", "carry", "boom-bust", "team-grid"]),
         ("roster", "Roster", "Trades, byes, injuries, lineup calls and the waiver wire.",
          ["trades", "byes", "injuries", "bench", "waivers", "waiver-wars", "overbids", "drops", "position"]),
         ("draft-group", "Draft", "How the draft played out, and how much each team still leans on it.",

@@ -340,23 +340,34 @@ def byes(lg, min_ppg=8.0):
 _INJ = re.compile(r"([A-Z]{2,3})-((?:[A-Z][a-z]?\.)?[A-Z][\w'.-]*(?: [A-Z][\w'.-]+)*) (was injured during the play|has returned to the game)")
 
 
+def game_plays(lg, w):
+    """[(game, plays)] for every NFL game in week w, from ESPN's play-by-play. Fetched once per build and shared."""
+    cache = lg.__dict__.setdefault("_plays", {})
+    if w not in cache:
+        out = []
+        for g in winprob.espn_games(lg.season, w):
+            try:
+                items, page = [], 1
+                while True:
+                    d = winprob._fetch(winprob.ESPN_PLAYS.format(id=g["id"], page=page))
+                    items += d["items"]
+                    if page >= d.get("pageCount", 1):
+                        break
+                    page += 1
+            except Exception as e:  # one bad game shouldn't sink the page
+                print(f"plays for {g['name']} failed: {e}")
+                continue
+            out.append((g, sorted(items, key=lambda p: int(p["sequenceNumber"]))))
+        cache[w] = out
+    return cache[w]
+
+
 def injury_exits(lg, w):
     """{(espn name token like 'E.Arroyo', game's teams)} for players who got hurt during a play in week w and never came back."""
     hurt = set()
-    for g in winprob.espn_games(lg.season, w):
-        try:
-            items, page = [], 1
-            while True:
-                d = winprob._fetch(winprob.ESPN_PLAYS.format(id=g["id"], page=page))
-                items += d["items"]
-                if page >= d.get("pageCount", 1):
-                    break
-                page += 1
-        except Exception as e:  # one bad game shouldn't sink the page
-            print(f"plays for {g['name']} failed: {e}")
-            continue
+    for g, items in game_plays(lg, w):
         state = {}  # name -> still out?  Any later mention in a play (not an injury note) means he came back.
-        for pl in sorted(items, key=lambda p: int(p["sequenceNumber"])):
+        for pl in items:
             text = pl.get("text") or ""
             plain = re.sub(r"\*\* Injury Update:.*", "", _INJ.sub("", text))
             for n in [n for n, out in state.items() if out and re.search(rf"(?<![\w.]){re.escape(n)}\b", plain)]:
@@ -451,3 +462,78 @@ def opponent_peaks(lg, top=2, min_games=3, floor=15.0):
                                  "rank": 1 + sum(1 for x, _ in g if x > v)})  # 1 = season best, ties share the higher rank
         out.append({"team": name, "actual": actual, "expected": expected, "extra": extra, "hits": sorted(hits, key=lambda h: h["week"])})
     return sorted(out, key=lambda x: -(x["actual"] - x["expected"]))
+
+
+# ---------------------------------------------------------------- points wiped out by penalties (season)
+_ESPN_TEAM = {"HST": "HOU", "BLT": "BAL", "CLV": "CLE", "ARZ": "ARI", "LA": "LAR", "JAC": "JAX", "WSH": "WAS"}
+_PEN = re.compile(r"PENALTY on ([A-Z]{2,3})(?:-([^,]+))?, ([^,]+?), (\d+) yards?")  # some flags name only the team
+
+
+def flagged_plays(lg):
+    """Runs and catches wiped out by an accepted penalty ("No Play"), with the fantasy points each player lost.
+    Each item: week, player id, points lost, yards, touchdown?, kind, penalty, who was flagged, own team's flag?"""
+    sc = lg.scoring
+    by_espn = {str(v["espn_id"]): k for k, v in lg.players.items() if v.get("espn_id")}
+    out = []
+    for w in lg.weeks:
+        for g, items in game_plays(lg, w):
+            for pl in items:
+                text = pl.get("text") or ""
+                if "PENALTY" not in text or "No Play" not in text:
+                    continue
+                pre, _, pen_text = text.partition("PENALTY")
+                if any(k in pre for k in ("punts", "kicks", "sacked", "incomplete", "INTERCEPTED", "Two-Point", "spiked", "kneels")):
+                    continue
+                m = re.search(r"for (-?\d+) yards?", pre)
+                yards = int(m.group(1)) if m else (0 if "no gain" in pre else None)
+                if yards is None:
+                    continue
+                td = "TOUCHDOWN" in pre
+                pen = _PEN.search("PENALTY" + pen_text)
+                parts = {}
+                for x in pl.get("participants") or []:
+                    ref = ((x.get("athlete") or {}).get("$ref") or "")
+                    if "/athletes/" in ref:
+                        parts.setdefault(x.get("type"), ref.split("/athletes/")[1].split("?")[0])
+                losers = []
+                if "rusher" in parts:
+                    losers.append((parts["rusher"], "run", yards * sc.get("rush_yd", 0) + td * sc.get("rush_td", 0)))
+                elif "passer" in parts and "receiver" in parts:
+                    losers.append((parts["passer"], "pass", yards * sc.get("pass_yd", 0) + td * sc.get("pass_td", 0)))
+                    losers.append((parts["receiver"], "catch", sc.get("rec", 0) + yards * sc.get("rec_yd", 0) + td * sc.get("rec_td", 0)))
+                for espn, kind, pts in losers:
+                    pid = by_espn.get(espn)
+                    if not pid or pts <= 0:
+                        continue
+                    team = lg.proj(w)[1].get(pid) or (lg.players.get(pid) or {}).get("team")
+                    flag_team = _ESPN_TEAM.get(pen.group(1), pen.group(1)) if pen else None
+                    out.append({"week": w, "pid": pid, "player": lg.name_of(pid), "pos": lg.pos_of(pid), "pts": round(pts, 2),
+                                "yards": yards, "td": td, "kind": kind,
+                                "penalty": pen.group(3).strip() if pen else "penalty",
+                                "flagged": ((pen.group(2) or "the team").strip() + f" ({flag_team})") if pen else "",
+                                "own": bool(pen) and flag_team == team, "game": g["name"]})
+    return out
+
+
+def flagged_away(lg):
+    """Per fantasy team: points its starters lost to wiped-out plays, split by whose flag it was."""
+    plays = flagged_plays(lg)
+    starters = {(m["roster_id"], w): set(m["starters"]) for w in lg.weeks for m in lg.matchups[w]}
+    teams = []
+    for r, name in lg.team.items():
+        mine = [dict(p) for p in plays if p["pid"] in starters.get((r, p["week"]), ())]
+        teams.append({"team": name, "plays": sorted(mine, key=lambda p: (p["week"], -p["pts"])),
+                      "own": sum(p["pts"] for p in mine if p["own"]), "theirs": sum(p["pts"] for p in mine if not p["own"]),
+                      "total": sum(p["pts"] for p in mine)})
+    teams.sort(key=lambda t: -t["total"])
+    who = {}
+    for (r, w), ps in starters.items():
+        for p in ps:
+            who[(p, w)] = lg.team[r]
+    biggest = sorted((dict(p, started_by=who.get((p["pid"], p["week"]))) for p in plays), key=lambda p: -p["pts"])[:10]
+    per = collections.defaultdict(lambda: {"pts": 0.0, "n": 0})
+    for p in plays:
+        per[(p["pid"], p["player"], p["pos"])]["pts"] += p["pts"]
+        per[(p["pid"], p["player"], p["pos"])]["n"] += 1
+    players = sorted(({"player": k[1], "pos": k[2], **v} for k, v in per.items()), key=lambda x: -x["pts"])[:10]
+    return {"teams": teams, "biggest": biggest, "players": players, "n": len(plays)}
