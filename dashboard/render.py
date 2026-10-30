@@ -1813,9 +1813,11 @@ def peaks_switch(by_top):
 def _flag_play(p):
     what = {"run": f"{p['yards']}-yd {'TD run' if p['td'] else 'run'}",
             "catch": f"{p['yards']}-yd {'TD catch' if p['td'] else 'catch'}",
-            "pass": f"{p['yards']}-yd {'TD pass' if p['td'] else 'completion'}"}[p["kind"]]
+            "pass": f"{p['yards']}-yd {'TD pass' if p['td'] else 'completion'}",
+            "kick return": f"{p['yards']}-yd {'TD kick return' if p['td'] else 'kick return'}",
+            "punt return": f"{p['yards']}-yd {'TD punt return' if p['td'] else 'punt return'}"}[p["kind"]]
     if p.get("spot"):
-        what += f' <span class="muted">(TD and the last {p["lost_yards"]} yds called back)</span>'
+        what += (f' <span class="muted">({"TD and the " if p["td"] else ""}last {p["lost_yards"]} yds called back)</span>')
     tag = ('<span class="chip" style="color:var(--bad)">own team’s flag</span>' if p["own"]
            else '<span class="chip" style="color:var(--ink3)">defense’s flag</span>')
     return what, f'{esc(p["penalty"])} on {esc(p["flagged"])} {tag}'
@@ -1864,7 +1866,7 @@ def flagged_section(d):
     return (table + lists +
             '<p class="note">Runs and completions that were called back by an accepted penalty (“No Play”), plus touchdowns taken away by a '
             'flag during the play (the yards up to the flag still count, so only the score and the yards after it are lost). Scored with this league’s settings: '
-            'rushing and receiving yards, the half point per catch, passing yards and any touchdown that came off the board. The team table counts '
+            'rushing, receiving and kick/punt return yards, the half point per catch, passing yards and any touchdown that came off the board. Returns count when the whole return was wiped out, or when the return team’s own flag took back the yards after the foul. The team table counts '
             'only players in that fantasy team’s starting lineup that week; the lists count every player. A flag on the defense usually gave the '
             'offense yards back, so it’s shown separately. Penalties enforced after a play that still counted, sacks, incompletions and kicks are left out. '
             'From ESPN’s play-by-play. Click a team for its plays.</p>')
