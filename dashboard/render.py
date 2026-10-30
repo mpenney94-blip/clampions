@@ -1751,3 +1751,39 @@ def payoff_table(d):
     return (f'<div class="panel scroll"><table class="grid-t"><thead><tr><th>Position</th>{head}</tr></thead><tbody>{"".join(trs)}</tbody></table></div>'
             '<p class="note">League-wide: the share of picks at each position and stage of the draft that beat their slot (darker = more hits), '
             'with the average points vs. slot and the number of picks underneath.</p>')
+
+
+def peaks_table(rows):
+    mx = max(abs(x["actual"] - x["expected"]) for x in rows) or 1
+
+    def cells(x):
+        d = x["actual"] - x["expected"]
+        bar = (f'<div style="display:flex;align-items:center;height:12px;min-width:150px"><div style="flex:1;display:flex;justify-content:flex-end">'
+               + (f'<span style="height:12px;width:{100 * -d / mx:.1f}%;background:var(--good);border-radius:3px 0 0 3px"></span>' if d < 0 else "")
+               + '</div><div style="width:1px;height:16px;background:var(--ink3)"></div><div style="flex:1">'
+               + (f'<span style="display:block;height:12px;width:{100 * d / mx:.1f}%;background:var(--bad);border-radius:0 3px 3px 0"></span>' if d > 0 else "")
+               + '</div></div>')
+        return (f'<td class="barcell">{bar}</td><td class="n team">{x["actual"]}</td><td class="n">{x["expected"]:.1f}</td>'
+                f'<td class="n team {"neg" if d > 0 else "pos" if d < 0 else ""}">{d:+.1f}</td><td class="n">{x["extra"]:.0f}</td>')
+
+    def detail(x):
+        if not x["hits"]:
+            return '<span class="muted">No opponent has had a career day against this team yet.</span>'
+        return ('<table class="picks">' + "".join(
+            f'<tr><td class="muted">Wk {h["week"]}</td><td><b>{esc(h["player"])}</b> <span class="muted">{h["pos"] or ""}</span>'
+            f'{" <span class=chip>season best</span>" if h["best"] else ""}</td><td class="muted">for {esc(h["opp"])}</td>'
+            f'<td class="n team">{h["pts"]:.1f}</td><td class="n muted">avg {h["avg"]:.1f}</td>'
+            f'<td class="n neg">+{h["pts"] - h["avg"]:.1f}</td></tr>' for h in x["hits"]) + '</table>')
+    controls = _sort_controls("peaks", [("diff", "Above expected", "Most victimized by career days first"),
+                                        ("actual", "Career days faced", "Most career days faced first"),
+                                        ("extra", "Extra points", "Most points allowed above those players' averages first")])
+    data = lambda x: {"diff": x["actual"] - x["expected"], "actual": x["actual"] + x["expected"] / 100, "extra": x["extra"]}
+    legend = ('<div class="legend"><span><i style="background:var(--bad)"></i>Faced more than expected (unlucky)</span>'
+              '<span><i style="background:var(--good)"></i>Fewer than expected (lucky)</span></div>')
+    return (f'<div class="panel scroll sortbars">{controls}{legend}<table class="expand"><thead><tr><th></th><th>Team</th>'
+            f'<th class="barcell">vs. expected</th><th class="n">Faced</th><th class="n">Expected</th><th class="n">Difference</th>'
+            f'<th class="n">Extra points</th></tr></thead><tbody>{_xrows("pk", rows, cells, detail, 7, data)}</tbody></table></div>'
+            '<p class="note">A career day = an opposing starter’s best or second-best game of the season so far, and at least 15 points. '
+            'Expected = how many you’d expect by chance: a player with 7 games, 2 of them career days, has a 2-in-7 chance any given game is one. '
+            'Extra points = how far those games beat each player’s season average. Players with fewer than 3 games don’t count. '
+            'These shift as the season goes on and players set new highs. Click a team for the games.</p>')

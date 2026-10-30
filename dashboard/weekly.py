@@ -419,3 +419,34 @@ def injuries(lg, min_ppg=8.0):
         out.append({"team": name, "missed": missed, "left": left, "dead": dead, "cut": dropped_hurt(lg, r, ppg),
                     "out": sum(x[2] for x in missed), "early": sum(x[2] for x in left)})
     return sorted(out, key=lambda x: -(x["out"] + x["early"]))
+
+
+# ---------------------------------------------------------------- opponents' career days (season)
+def opponent_peaks(lg, min_games=3, floor=15.0):
+    """For each team: opposing starters who had one of their two best games of the season against it (and at least
+    `floor` points, so a scrub's best day doesn't count), versus how many you'd expect by chance. A player with n games,
+    k of them qualifying, has a k-in-n chance that any one game is one of them."""
+    games = {p: sorted(((lg.pts[p].get(w, 0), w) for w in lg.weeks if p in lg.played[w]), reverse=True) for p in lg.pts}
+    out = []
+    for r, name in lg.team.items():
+        actual, expected, extra, hits = 0, 0.0, 0.0, []
+        for w in lg.weeks:
+            opp = lg.opponent(w).get(r)
+            if opp is None:
+                continue
+            m = next(m for m in lg.matchups[w] if m["roster_id"] == opp)
+            for p in m["starters"]:
+                g = games.get(p, [])
+                if p == "0" or p not in lg.played[w] or len(g) < min_games:
+                    continue
+                top = [x for x, _ in g if x >= g[1][0] and x >= floor]  # ties with the second-best game count
+                expected += len(top) / len(g)
+                v = lg.pts[p].get(w, 0)
+                if v >= g[1][0] and v >= floor:
+                    avg = sum(x for x, _ in g) / len(g)
+                    actual += 1
+                    extra += v - avg
+                    hits.append({"week": w, "player": lg.name_of(p), "pos": lg.pos_of(p), "opp": lg.team[opp], "pts": v, "avg": avg,
+                                 "best": v >= g[0][0]})
+        out.append({"team": name, "actual": actual, "expected": expected, "extra": extra, "hits": sorted(hits, key=lambda h: h["week"])})
+    return sorted(out, key=lambda x: -(x["actual"] - x["expected"]))
