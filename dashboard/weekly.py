@@ -470,18 +470,47 @@ _PEN = re.compile(r"PENALTY on ([A-Z]{2,3})(?:-([^,]+))?, ([^,]+?), (\d+) yards?
 
 
 def flagged_plays(lg):
-    """Runs and catches wiped out by an accepted penalty ("No Play"), with the fantasy points each player lost.
+    """Runs and catches wiped out by a penalty, with the fantasy points each player lost. Two kinds:
+    - accepted "No Play" flags: the whole play comes off the board;
+    - touchdowns "NULLIFIED" by a spot foul: the run or catch counts up to the flag, so the touchdown and the yards
+      after the flag are what's lost.
     Each item: week, player id, points lost, yards, touchdown?, kind, penalty, who was flagged, own team's flag?"""
     sc = lg.scoring
     by_espn = {str(v["espn_id"]): k for k, v in lg.players.items() if v.get("espn_id")}
+    by_name = collections.defaultdict(list)
+    for k, v in lg.players.items():
+        if v.get("full_name"):
+            by_name[winprob._norm(v["full_name"])].append(k)
+    box = {}  # game id -> {espn id: (team, normalized name)}, for players Sleeper has no ESPN id for (often rookies)
+
+    def resolve(espn, g, w):
+        if espn in by_espn:
+            return by_espn[espn]
+        if g["id"] not in box:
+            try:
+                box[g["id"]] = {v: k for k, v in winprob.espn_roster_ids(g).items()}
+            except Exception as e:
+                print(f"box score for {g['name']} failed: {e}")
+                box[g["id"]] = {}
+        team, name = box[g["id"]].get(espn, (None, None))
+        for pid in by_name.get(name, []):
+            if (lg.proj(w)[1].get(pid) or (lg.players.get(pid) or {}).get("team")) == team:
+                by_espn[espn] = pid
+                return pid
+        return None
+
     out = []
     for w in lg.weeks:
         for g, items in game_plays(lg, w):
             for pl in items:
                 text = pl.get("text") or ""
-                if "PENALTY" not in text or "No Play" not in text:
+                if "PENALTY" not in text:
                     continue
                 pre, _, pen_text = text.partition("PENALTY")
+                no_play = "No Play" in text
+                spot_td = not no_play and "NULLIFIED" in pre and "TOUCHDOWN" in pre
+                if not (no_play or spot_td):
+                    continue
                 if any(k in pre for k in ("punts", "kicks", "sacked", "incomplete", "INTERCEPTED", "Two-Point", "spiked", "kneels")):
                     continue
                 m = re.search(r"for (-?\d+) yards?", pre)
@@ -490,25 +519,38 @@ def flagged_plays(lg):
                     continue
                 td = "TOUCHDOWN" in pre
                 pen = _PEN.search("PENALTY" + pen_text)
+                spot = re.search(r"enforced at (?:([A-Z]{2,3}) )?(\d+)", pen_text)
                 parts = {}
                 for x in pl.get("participants") or []:
                     ref = ((x.get("athlete") or {}).get("$ref") or "")
                     if "/athletes/" in ref:
                         parts.setdefault(x.get("type"), ref.split("/athletes/")[1].split("?")[0])
-                losers = []
                 if "rusher" in parts:
-                    losers.append((parts["rusher"], "run", yards * sc.get("rush_yd", 0) + td * sc.get("rush_td", 0)))
+                    who = [(parts["rusher"], "run")]
                 elif "passer" in parts and "receiver" in parts:
-                    losers.append((parts["passer"], "pass", yards * sc.get("pass_yd", 0) + td * sc.get("pass_td", 0)))
-                    losers.append((parts["receiver"], "catch", sc.get("rec", 0) + yards * sc.get("rec_yd", 0) + td * sc.get("rec_td", 0)))
-                for espn, kind, pts in losers:
-                    pid = by_espn.get(espn)
-                    if not pid or pts <= 0:
+                    who = [(parts["passer"], "pass"), (parts["receiver"], "catch")]
+                else:
+                    continue
+                for espn, kind in who:
+                    pid = resolve(espn, g, w)
+                    if not pid:
                         continue
                     team = lg.proj(w)[1].get(pid) or (lg.players.get(pid) or {}).get("team")
+                    lost = yards
+                    if spot_td:  # yards up to the flag still count; the rest of the run and the score don't
+                        if not spot:
+                            continue
+                        side = _ESPN_TEAM.get(spot.group(1), spot.group(1)) if spot.group(1) else None
+                        to_goal = int(spot.group(2)) if side != team else 100 - int(spot.group(2))
+                        lost = max(0, min(yards, to_goal))
+                    rate, td_pts = {"run": (sc.get("rush_yd", 0), sc.get("rush_td", 0)), "pass": (sc.get("pass_yd", 0), sc.get("pass_td", 0)),
+                                    "catch": (sc.get("rec_yd", 0), sc.get("rec_td", 0))}[kind]
+                    pts = lost * rate + td * td_pts + (sc.get("rec", 0) if kind == "catch" and no_play else 0)
+                    if pts <= 0:
+                        continue
                     flag_team = _ESPN_TEAM.get(pen.group(1), pen.group(1)) if pen else None
                     out.append({"week": w, "pid": pid, "player": lg.name_of(pid), "pos": lg.pos_of(pid), "pts": round(pts, 2),
-                                "yards": yards, "td": td, "kind": kind,
+                                "yards": yards, "lost_yards": lost, "td": td, "kind": kind, "spot": spot_td,
                                 "penalty": pen.group(3).strip() if pen else "penalty",
                                 "flagged": ((pen.group(2) or "the team").strip() + f" ({flag_team})") if pen else "",
                                 "own": bool(pen) and flag_team == team, "game": g["name"]})
