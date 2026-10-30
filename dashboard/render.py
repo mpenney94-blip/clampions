@@ -1753,7 +1753,9 @@ def payoff_table(d):
             'with the average points vs. slot and the number of picks underneath.</p>')
 
 
-def peaks_table(rows):
+def peaks_table(rows, top=2):
+    key = f"pk{top}"
+    which = {1: "best game", 2: "best or second-best game", 3: "best, second- or third-best game"}[top]
     mx = max(abs(x["actual"] - x["expected"]) for x in rows) or 1
 
     def cells(x):
@@ -1774,7 +1776,7 @@ def peaks_table(rows):
             f'{" <span class=chip>season best</span>" if h["best"] else ""}</td><td class="muted">for {esc(h["opp"])}</td>'
             f'<td class="n team">{h["pts"]:.1f}</td><td class="n muted">avg {h["avg"]:.1f}</td>'
             f'<td class="n neg">+{h["pts"] - h["avg"]:.1f}</td></tr>' for h in x["hits"]) + '</table>')
-    controls = _sort_controls("peaks", [("diff", "Above expected", "Most victimized by career days first"),
+    controls = _sort_controls(f"peaks{top}", [("diff", "Above expected", "Most victimized by career days first"),
                                         ("actual", "Career days faced", "Most career days faced first"),
                                         ("extra", "Extra points", "Most points allowed above those players' averages first")])
     data = lambda x: {"diff": x["actual"] - x["expected"], "actual": x["actual"] + x["expected"] / 100, "extra": x["extra"]}
@@ -1782,8 +1784,18 @@ def peaks_table(rows):
               '<span><i style="background:var(--good)"></i>Fewer than expected (lucky)</span></div>')
     return (f'<div class="panel scroll sortbars">{controls}{legend}<table class="expand"><thead><tr><th></th><th>Team</th>'
             f'<th class="barcell">vs. expected</th><th class="n">Faced</th><th class="n">Expected</th><th class="n">Difference</th>'
-            f'<th class="n">Extra points</th></tr></thead><tbody>{_xrows("pk", rows, cells, detail, 7, data)}</tbody></table></div>'
-            '<p class="note">A career day = an opposing starter’s best or second-best game of the season so far, and at least 15 points. '
-            'Expected = how many you’d expect by chance: a player with 7 games, 2 of them career days, has a 2-in-7 chance any given game is one. '
+            f'<th class="n">Extra points</th></tr></thead><tbody>{_xrows(key, rows, cells, detail, 7, data)}</tbody></table></div>'
+            f'<p class="note">A career day = an opposing starter’s {which} of the season so far, and at least 15 points. '
+            f'Expected = how many you’d expect by chance: a player with 7 games, {top} of them career days, has a {top}-in-7 chance any given game is one. '
             'Extra points = how far those games beat each player’s season average. Players with fewer than 3 games don’t count. '
             'These shift as the season goes on and players set new highs. Click a team for the games.</p>')
+
+
+def peaks_switch(by_top):
+    """by_top: {1: rows, 2: rows, 3: rows}; a toggle between counting best games only, top two or top three."""
+    labels = {1: "Best game only", 2: "Top 2 games", 3: "Top 3 games"}
+    opts = "".join(f'<option value="{k}"{" selected" if k == 2 else ""}>{labels[k]}</option>' for k in by_top)
+    panels = "".join(f'<div data-panel="{k}"{"" if k == 2 else " hidden"}>{peaks_table(rows, k)}</div>' for k, rows in by_top.items())
+    return (f'<div class="switch"><div class="hl-bar" style="margin-bottom:10px"><label for="peaks-top">Count</label>'
+            f'<select id="peaks-top" autocomplete="off">{opts}</select>'
+            f'<span class="muted sort-hint">which of each opposing player’s best games count as a career day</span></div>{panels}</div>')
