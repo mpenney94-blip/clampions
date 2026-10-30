@@ -84,6 +84,9 @@ def espn_games(season, week):
             "kickoff": _ts(e["date"]),
             "state": e["status"]["type"]["state"],  # pre / in / post
             "teams": teams,
+            "ids": {t["team"]["id"]: ESPN_TO_SLEEPER_TEAM.get(t["team"]["abbreviation"], t["team"]["abbreviation"]) for t in comp["competitors"]},
+            "home": next((ESPN_TO_SLEEPER_TEAM.get(t["team"]["abbreviation"], t["team"]["abbreviation"])
+                          for t in comp["competitors"] if t.get("homeAway") == "home"), None),
         })
     return games
 
