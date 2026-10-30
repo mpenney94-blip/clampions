@@ -304,11 +304,6 @@ def waiver_wars(claims, per_team, teams):
              f'<div class="panel tile"><div class="k">Lost on a tie</div><div class="v">{len(ties)}</div>'
              f'<div class="s">{"Same bid as the winner, lost on waiver order" + (": " + ", ".join(esc(c["player"]) for c in ties[:3]) if ties else "")}</div></div>'
              '</div>')
-    rows = "".join(f'<tr><td class="muted">{c["week"]}</td><td><b>{esc(c["player"])}</b> <span class="muted">{c["pos"] or ""}</span></td>'
-                   f'<td>{esc(c["winner"])} <b>${c["win_bid"]}</b></td><td class="muted">{bids(c)}</td>'
-                   f'<td class="n team">{c["since"]:.1f}</td></tr>' for c in claims)
-    claims_tbl = ('<h3 style="margin-top:18px">Every contested claim</h3><div class="panel scroll"><table><thead><tr><th>Wk</th><th>Player</th>'
-                  f'<th>Won by</th><th>Lost by</th><th class="n">Pts since</th></tr></thead><tbody>{rows}</tbody></table></div>')
     mx = max((v["missed"] for v in per_team.values()), default=1) or 1
     trs = []
     for t in sorted(teams, key=lambda t: -per_team.get(t, {}).get("missed", 0)):
@@ -328,9 +323,9 @@ def waiver_wars(claims, per_team, teams):
     team_tbl = ('<h3 style="margin-top:18px">Points that got away, by team</h3><p class="lede" style="margin:0 0 8px">Hover or tap a bar to see who they lost out on.</p><div class="panel tippanel"><table><thead><tr><th>Team</th>'
                 '<th class="barcell">Points missed</th><th class="n">Lost claims</th><th class="n">Pts</th><th>Biggest miss</th></tr></thead>'
                 f'<tbody>{"".join(trs)}</tbody></table></div>')
-    return (tiles + team_tbl + claims_tbl +
+    return (tiles + team_tbl +
             '<p class="note">A contested claim is a waiver run where more than one team put in a claim for the same player. '
-            '“Points since” and “points missed” are everything that player has scored from that week on, wherever he played, '
+            '“Points missed” is everything that player has scored from that week on, wherever he played, '
             'so they’re the most the losing teams could have gotten, not what they’d actually have started. '
             'Sleeper doesn’t share trade offers that weren’t accepted, so only waivers show up here.</p>')
 
