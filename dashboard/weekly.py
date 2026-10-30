@@ -792,7 +792,8 @@ def coach_decisions(lg):
                     continue
                 out.append({"week": w, "team": team, "coach": coaches.get(team, ""), "kicker": lg.name_of(k), "pid": k,
                             "distance": d, "career_long": lng, "call": call, "value": _kick_value(lg, d),
-                            "started_by": started.get((k, w)), "q": q, "clock": clock, "game": g["name"]})
+                            "started_by": started.get((k, w)), "q": q, "clock": clock, "game": g["name"],
+                            "dd": (st.get("shortDownDistanceText") or "").replace(" & ", " and ")})
     return out
 
 

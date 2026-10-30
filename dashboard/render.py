@@ -1931,7 +1931,8 @@ def coach_section(d):
         return ('<table class="picks">' + "".join(
             f'<tr><td class="muted">Wk {p["week"]}</td><td><b>{esc(p["kicker"])}</b> <span class="muted">{p["team"]}</span></td>'
             f'<td>{p["distance"]}-yd try <span class="muted">(career long {p["career_long"]})</span></td>'
-            f'<td>{esc(p["coach"] or p["team"])} {p["call"]} <span class="muted">· Q{p["q"]} {p["clock"]}</span></td>'
+            f'<td>{esc(p["coach"] or p["team"])} {p["call"]}'
+            f'{f" on <b>{esc(p["dd"])}</b>" if p["dd"] and p["call"] != "punted" else ""} <span class="muted">· {esc(p["dd"]) + " · " if p["dd"] and p["call"] == "punted" else ""}Q{p["q"]} {p["clock"]}</span></td>'
             f'<td class="n neg">−{p["value"]:.1f}</td></tr>' for p in t["plays"]) + '</table>')
     data = lambda t: {"total": t["total"], "n": len(t["plays"]) + t["total"] / 1000}
     controls = _sort_controls("coach", [("total", "Expected points", "Most kicker points passed up first"),
