@@ -1888,3 +1888,64 @@ def flagged_section(d):
             'rushing, receiving and kick/punt return yards, the half point per catch, passing yards and any touchdown that came off the board. Returns count when the whole return was wiped out, or when the return team’s own flag took back the yards after the foul. The team table and the biggest plays count only players in a fantasy starting lineup that week; the player list counts plays while on any fantasy roster. A flag on the defense usually gave the '
             'offense yards back, so it’s shown separately. Penalties enforced after a play that still counted, sacks, incompletions and kicks are left out. '
             'From ESPN’s play-by-play. Click a team for its plays.</p>')
+
+
+def kicker_table(rows):
+    if not rows:
+        return '<div class="panel muted">No kickers yet.</div>'
+    trs = []
+    for k in rows:
+        cells = []
+        for label, made, att in k["bands"]:
+            pct = made / att if att else -1
+            cells.append(f'<td class="n" data-v="{att + pct / 10:.3f}">{made:.0f}/{att:.0f}' + (f'<div class="muted" style="font-size:11px">{made / att:.0%}</div>' if att else "") + '</td>')
+        xm, xa = k["xp"]
+        trs.append(f'<tr><td data-v="{esc(k["player"].lower())}"><b>{esc(k["player"])}</b> <span class="muted">{k["nfl"] or ""}</span>'
+                   f'<div class="muted" style="font-size:12px">{esc(" → ".join(k["owners"]))}</div></td>{"".join(cells)}'
+                   f'<td class="n" data-v="{xa and xm / xa:.3f}">{xm:.0f}/{xa:.0f}</td>'
+                   f'<td class="n" data-v="{k["long_share"]:.3f}">{k["long_share"]:.0%}</td>'
+                   f'<td class="n" data-v="{k["season_long"]}">{k["season_long"]:.0f}</td><td class="n" data-v="{k["career_long"] or 0}">{k["career_long"] or "—"}</td>'
+                   f'<td class="n team" data-v="{k["ppg"]:.2f}">{k["ppg"]:.1f}</td></tr>')
+    head = "".join(f'<th class="n">{label}</th>' for label, *_ in rows[0]["bands"])
+    return (f'<div class="panel scroll"><table class="sortable"><thead><tr><th>Kicker</th>{head}<th class="n">XP</th><th class="n">50+ share</th>'
+            f'<th class="n">Season long</th><th class="n">Career long</th><th class="n" aria-sort="descending">Pts/game</th></tr></thead>'
+            f'<tbody>{"".join(trs)}</tbody></table></div>'
+            '<p class="note">Every kicker who has spent time on a fantasy roster this season (teams that had him underneath). Field goals made/attempted '
+            'by distance, from Sleeper’s stats. In this league a made field goal is worth 0.1 per yard minus 1 (a 30-yarder is 2, a 50-yarder 4), and misses cost '
+            'more the shorter the kick: −3 under 30 yards, −2 from 30–39, −1 from 40–49 and nothing from 50+. Long attempts are pure upside, '
+            'so 50+ share is the part of a kicker’s attempts that came from there. Career long is from ESPN. '
+            'Click a column header to sort.</p>')
+
+
+def coach_section(d):
+    rows = d["teams"]
+    mx = max((t["total"] for t in rows), default=0) or 1
+
+    def cells(t):
+        return (f'<td class="barcell"><div class="track"><span style="width:{100 * t["total"] / mx:.1f}%;background:var(--bad)"></span></div></td>'
+                f'<td class="n team">{t["total"]:.1f}</td><td class="n muted">{len(t["plays"])}</td>')
+
+    def detail(t):
+        if not t["plays"]:
+            return '<span class="muted">No coach has passed up a kick for this team’s kickers yet.</span>'
+        return ('<table class="picks">' + "".join(
+            f'<tr><td class="muted">Wk {p["week"]}</td><td><b>{esc(p["kicker"])}</b> <span class="muted">{p["team"]}</span></td>'
+            f'<td>{p["distance"]}-yd try <span class="muted">(career long {p["career_long"]})</span></td>'
+            f'<td>{esc(p["coach"] or p["team"])} {p["call"]} <span class="muted">· Q{p["q"]} {p["clock"]}</span></td>'
+            f'<td class="n neg">−{p["value"]:.1f}</td></tr>' for p in t["plays"]) + '</table>')
+    data = lambda t: {"total": t["total"], "n": len(t["plays"]) + t["total"] / 1000}
+    controls = _sort_controls("coach", [("total", "Expected points", "Most kicker points passed up first"),
+                                        ("n", "Kicks passed up", "Most kicks passed up first")])
+    table = (f'<div class="panel scroll sortbars">{controls}<table class="expand"><thead><tr><th></th><th>Team</th>'
+             f'<th class="barcell">Kicker points passed up</th><th class="n">Expected points</th><th class="n">Kicks</th></tr></thead>'
+             f'<tbody>{_xrows("co", rows, cells, detail, 5, data)}</tbody></table></div>')
+    crs = "".join(f'<tr><td class="muted">{i}</td><td><b>{esc(c["coach"] or c["team"])}</b> <span class="muted">{c["team"]}</span></td>'
+                  f'<td class="n muted">{c["punts"]} punt{"" if c["punts"] == 1 else "s"}, {c["n"] - c["punts"]} failed {"try" if c["n"] - c["punts"] == 1 else "tries"}</td><td class="n team neg">−{c["value"]:.1f}</td></tr>'
+                  for i, c in enumerate(d["coaches"], 1))
+    return (table + f'<div class="panel" style="margin-top:14px"><h3>Most kicker-unfriendly coaches</h3><table>{crs}</table></div>'
+            '<p class="note">Every 4th down where a field goal would have been within the kicker’s career long, but the coach punted or went for it and '
+            'didn’t convert (successful tries are left out, since that drive kept going or scored). Kick distance = yards to the goal line + 18 (the end zone plus the hold, which is how this season’s field goals measured out). Each passed-up kick is valued at what it was worth under '
+            'this league’s scoring before it was tried, using typical NFL make rates by distance and this league’s scoring: a make is 0.1 per yard minus 1, and a miss is −3 under 30 yards, '
+            '−2 from 30–39, −1 from 40–49 and 0 from 50+. So a 55-yarder (made about 62% of the time for 4.5 points, free to miss) is worth +2.8, '
+            'while a 25-yarder (98.5% for 1.5 points, −3 if missed) is worth about +1.4. Plays in the last two minutes when the team trailed by 4 or more are skipped. The team table counts kickers '
+            'in that fantasy team’s starting lineup that week; the coach list counts every team. Click a team for the plays.</p>')

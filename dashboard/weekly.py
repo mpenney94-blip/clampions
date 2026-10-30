@@ -637,3 +637,178 @@ def flagged_away(lg):
                         "pts": sum(p["pts"] for p in ps), "n": len(ps), "started_pts": sum(p["pts"] for p in ps if p["started"])})
     players = sorted(players, key=lambda x: -x["pts"])[:10]
     return {"teams": teams, "biggest": biggest, "players": players, "n": len(plays)}
+
+
+# ---------------------------------------------------------------- kicking (season)
+_K_BANDS = [("0–39", ("0_19", "20_29", "30_39")), ("40–49", ("40_49",)), ("50–59", ("50_59",)), ("60+", ("60p",))]
+# typical NFL make rates by distance, for the value of a kick that was never tried
+_MAKE = [(30, .985), (40, .93), (50, .84), (55, .74), (60, .62), (99, .45)]
+
+
+def _espn_kickers(lg):
+    """{(NFL team, normalized name): (espn id, career long FG)} plus {NFL team: head coach}, from ESPN team rosters."""
+    if "_kickers" in lg.__dict__:
+        return lg._kickers
+    out, coaches = {}, {}
+    for tid in list(range(1, 31)) + [33, 34]:
+        try:
+            d = winprob._fetch(f"https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/{tid}/roster")
+        except Exception as e:
+            print(f"roster {tid} failed: {e}")
+            continue
+        abbr = winprob.ESPN_TO_SLEEPER_TEAM.get(d["team"]["abbreviation"], d["team"]["abbreviation"])
+        c = (d.get("coach") or [{}])[0]
+        coaches[abbr] = f'{c.get("firstName", "")} {c.get("lastName", "")}'.strip()
+        for grp in d.get("athletes", []):
+            for a in grp.get("items", []):
+                if (a.get("position") or {}).get("abbreviation") == "PK":
+                    out[(abbr, winprob._norm(a["displayName"]))] = (a["id"], None)
+    for key, (aid, _) in list(out.items()):
+        try:
+            st = winprob._fetch(f"https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/athletes/{aid}/stats")
+            for cat in st.get("categories", []):
+                if "longFieldGoalMade" in (cat.get("names") or []):
+                    i = cat["names"].index("longFieldGoalMade")
+                    out[key] = (aid, int(float((cat.get("totals") or [0] * (i + 1))[i] or 0)))
+        except Exception as e:
+            print(f"career long for {key} failed: {e}")
+    lg._kickers = (out, coaches)
+    return lg._kickers
+
+
+def _career_long(lg, pid):
+    info = lg.players.get(pid) or {}
+    ks, _ = _espn_kickers(lg)
+    name = winprob._norm(info.get("full_name") or "")
+    for (team, n), (_, lng) in ks.items():
+        if n == name and lng:
+            return lng
+    return None
+
+
+def kicker_profile(lg):
+    """Every kicker who spent time on a fantasy roster: makes/attempts by distance, long-kick share, season and career long."""
+    stats = {}
+    for w in lg.weeks:
+        for r in winprob._fetch(f"https://api.sleeper.app/stats/nfl/{lg.season}/{w}?season_type=regular&position[]=K"):
+            if r["player_id"] in stats or (r.get("stats") or {}).get("fga") or (r.get("stats") or {}).get("xpa"):
+                stats.setdefault(r["player_id"], []).append(r.get("stats") or {})
+    owners = collections.defaultdict(list)
+    for w in lg.weeks:
+        for m in lg.matchups[w]:
+            for p in m.get("players") or []:
+                if lg.pos_of(p) == "K" and lg.team[m["roster_id"]] not in owners[p]:
+                    owners[p].append(lg.team[m["roster_id"]])
+    out = []
+    for pid, owned in owners.items():
+        rows = stats.get(pid, [])
+        if not rows:
+            continue
+        tot = lambda k: sum(r.get(k, 0) or 0 for r in rows)
+        bands = []
+        for label, keys in _K_BANDS:
+            made = sum(tot(f"fgm_{k}") for k in keys) if label != "60+" else tot("fgm_50p") - tot("fgm_50_59")
+            miss = sum(tot(f"fgmiss_{k}") for k in keys)
+            bands.append((label, made, made + miss))
+        games = sum(1 for w in lg.weeks if pid in lg.played[w])
+        att = sum(b[2] for b in bands)
+        out.append({"player": lg.name_of(pid), "nfl": (lg.players.get(pid) or {}).get("team"), "owners": owned, "bands": bands,
+                    "xp": (tot("xpm"), tot("xpa")), "att": att, "long_share": (bands[2][2] + bands[3][2]) / att if att else 0,
+                    "season_long": max((r.get("fgm_lng", 0) or 0 for r in rows), default=0), "career_long": _career_long(lg, pid),
+                    "ppg": sum(lg.pts[pid].get(w, 0) for w in lg.weeks if pid in lg.played[w]) / games if games else 0, "games": games})
+    return sorted(out, key=lambda x: -x["ppg"])
+
+
+def _kick_value(lg, d):
+    """What a field goal try from d yards was worth under this league's scoring, before it was kicked."""
+    sc = lg.scoring
+    p = next(rate for lim, rate in _MAKE if d < lim)
+    band = "60p" if d >= 60 else "50_59" if d >= 50 else "40_49" if d >= 40 else "30_39" if d >= 30 else "20_29" if d >= 20 else "0_19"
+    made = sc.get(f"fgm_{band}", 0) + (sc.get("fgm_50p", 0) if d >= 50 else 0) + d * sc.get("fgm_yds", 0) + sc.get("fgm", 0)
+    miss = sc.get(f"fgmiss_{band}", 0) + (sc.get("fgmiss_50p", 0) if d >= 50 else 0) + sc.get("fgmiss", 0)
+    return p * made + (1 - p) * miss
+
+
+_GO = {"Rush", "Pass Reception", "Pass Incompletion", "Sack", "Pass Interception Return", "Fumble Recovery (Own)",
+       "Fumble Recovery (Opponent)", "Interception Return Touchdown", "Fumble Return Touchdown"}
+
+
+def coach_decisions(lg):
+    """4th downs inside the kicker's career-long range where the coach punted or went for it and didn't convert."""
+    _, coaches = _espn_kickers(lg)
+    kicker = {}  # (team, week) -> the kicker who played
+    for w in lg.weeks:
+        for pid in lg.played[w]:
+            if lg.pos_of(pid) == "K":
+                kicker[(lg.proj(w)[1].get(pid) or (lg.players.get(pid) or {}).get("team"), w)] = pid
+    started = {}
+    for w in lg.weeks:
+        for m in lg.matchups[w]:
+            for p in m["starters"]:
+                started[(p, w)] = lg.team[m["roster_id"]]
+    longs = {}
+    out = []
+    for w in lg.weeks:
+        for g, items in game_plays(lg, w):
+            score = {t: 0 for t in g["teams"]}
+            for i, pl in enumerate(items):
+                st = pl.get("start") or {}
+                team = g.get("ids", {}).get(((st.get("team") or {}).get("$ref") or "").split("/teams/")[-1].split("?")[0])
+                kind = (pl.get("type") or {}).get("text") or ""
+                before = dict(score)
+                if pl.get("homeScore") is not None and g.get("home"):
+                    away = next(t for t in g["teams"] if t != g["home"])
+                    score = {g["home"]: pl["homeScore"], away: pl["awayScore"]}
+                if st.get("down") != 4 or not team or "No Play" in (pl.get("text") or ""):
+                    continue
+                if kind.startswith("Punt"):
+                    call = "punted"
+                elif kind in _GO:
+                    nxt = next((q for q in items[i + 1:] if (q.get("start") or {}).get("down")), None)
+                    same = nxt and ((nxt.get("start") or {}).get("team") or {}).get("$ref") == (st.get("team") or {}).get("$ref")
+                    if same or "TOUCHDOWN" in (pl.get("text") or ""):
+                        continue  # converted: the drive went on
+                    call = "went for it and failed"
+                else:
+                    continue
+                # ESPN's yardsToEndzone is often measured from the wrong goal line; work it out from "SEA 49" and who has the ball
+                spot = re.match(r"(?:([A-Z]{2,3}) )?(\d+)", st.get("possessionText") or "")
+                if not spot:
+                    continue
+                side = winprob.ESPN_TO_SLEEPER_TEAM.get(spot.group(1), spot.group(1)) if spot.group(1) else None
+                side = {"LA": "LAR", "WSH": "WAS"}.get(side, side)
+                to_goal = 50 if not side else (100 - int(spot.group(2)) if side == team else int(spot.group(2)))
+                d = to_goal + 18  # this season's field goals: listed distance = yards to the goal line + 18 in nearly all of them
+                k = kicker.get((team, w))
+                if not k:
+                    continue
+                if k not in longs:
+                    longs[k] = _career_long(lg, k)
+                lng = longs[k] or 55
+                opp = next((t for t in g["teams"] if t != team), None)
+                q, clock = (pl.get("period") or {}).get("number", 0), (pl.get("clock") or {}).get("displayValue", "15:00")
+                mins = int(clock.split(":")[0]) if ":" in clock else 15
+                if d > lng or (q >= 4 and mins < 2 and before.get(opp, 0) - before.get(team, 0) >= 4):
+                    continue
+                out.append({"week": w, "team": team, "coach": coaches.get(team, ""), "kicker": lg.name_of(k), "pid": k,
+                            "distance": d, "career_long": lng, "call": call, "value": _kick_value(lg, d),
+                            "started_by": started.get((k, w)), "q": q, "clock": clock, "game": g["name"]})
+    return out
+
+
+def coach_summary(lg):
+    plays = coach_decisions(lg)
+    teams = []
+    for r, name in lg.team.items():
+        mine = sorted((p for p in plays if p["started_by"] == name), key=lambda p: (p["week"], -p["value"]))
+        teams.append({"team": name, "plays": mine, "total": sum(p["value"] for p in mine)})
+    teams.sort(key=lambda t: -t["total"])
+    nfl = collections.defaultdict(lambda: {"n": 0, "value": 0.0, "punts": 0, "coach": ""})
+    for p in plays:
+        c = nfl[p["team"]]
+        c["n"] += 1
+        c["value"] += p["value"]
+        c["punts"] += p["call"] == "punted"
+        c["coach"] = p["coach"]
+    coaches = sorted(({"team": t, **v} for t, v in nfl.items()), key=lambda x: -x["value"])[:10]
+    return {"teams": teams, "coaches": coaches, "n": len(plays)}
