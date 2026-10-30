@@ -1903,17 +1903,19 @@ def kicker_table(rows):
         trs.append(f'<tr><td data-v="{esc(k["player"].lower())}"><b>{esc(k["player"])}</b> <span class="muted">{k["nfl"] or ""}</span>'
                    f'<div class="muted" style="font-size:12px">{esc(" → ".join(k["owners"]))}</div></td>{"".join(cells)}'
                    f'<td class="n" data-v="{xa and xm / xa:.3f}">{xm:.0f}/{xa:.0f}</td>'
+                   f'<td class="n team">{k["made"]:.0f}</td><td class="n">{k["missed"]:.0f}</td>'
+                   f'<td class="n {"neg" if k["lost"] < 0 else "muted"}" data-v="{k["lost"]:.1f}">{k["lost"]:.1f}</td>'
                    f'<td class="n" data-v="{k["long_share"]:.3f}">{k["long_share"]:.0%}</td>'
                    f'<td class="n" data-v="{k["season_long"]}">{k["season_long"]:.0f}</td><td class="n" data-v="{k["career_long"] or 0}">{k["career_long"] or "—"}</td>'
                    f'<td class="n team" data-v="{k["ppg"]:.2f}">{k["ppg"]:.1f}</td></tr>')
     head = "".join(f'<th class="n">{label}</th>' for label, *_ in rows[0]["bands"])
-    return (f'<div class="panel scroll"><table class="sortable"><thead><tr><th>Kicker</th>{head}<th class="n">XP</th><th class="n">50+ share</th>'
+    return (f'<div class="panel scroll"><table class="sortable"><thead><tr><th>Kicker</th>{head}<th class="n">XP</th><th class="n">FG made</th><th class="n">FG missed</th><th class="n">Pts lost to misses</th><th class="n">50+ share</th>'
             f'<th class="n">Season long</th><th class="n">Career long</th><th class="n" aria-sort="descending">Pts/game</th></tr></thead>'
             f'<tbody>{"".join(trs)}</tbody></table></div>'
             '<p class="note">Every kicker who has spent time on a fantasy roster this season (teams that had him underneath). Field goals made/attempted '
             'by distance, from Sleeper’s stats. In this league a made field goal is worth 0.1 per yard minus 1 (a 30-yarder is 2, a 50-yarder 4), and misses cost '
             'more the shorter the kick: −3 under 30 yards, −2 from 30–39, −1 from 40–49 and nothing from 50+. Long attempts are pure upside, '
-            'so 50+ share is the part of a kicker’s attempts that came from there. Career long is from ESPN. '
+            'so 50+ share is the part of a kicker’s attempts that came from there. Points lost to misses = what his missed field goals and missed extra points (−3 each) cost under those rules. Career long is from ESPN. '
             'Click a column header to sort.</p>')
 
 
