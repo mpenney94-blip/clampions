@@ -130,6 +130,8 @@ def _play_points(play):
             add(aid, 3)
         elif role == "patScorer":
             add(aid, 1)
+        elif role == "returner" and ("Kickoff" in kind or "Punt" in kind):
+            add(aid, max(yds, 0) * 0.04 + (6 if "Touchdown" in kind else 0))  # kick and punt return yards score in this league
     return pts
 
 

@@ -515,6 +515,11 @@ def flagged_plays(lg):
                     continue
                 pre, _, pen_text = text.partition("PENALTY")
                 no_play = "No Play" in text
+                if ("kicks" in pre or "punts" in pre) and "returner" in str(pl.get("participants")):
+                    r = _flagged_return(lg, g, w, pl, pre, pen_text, no_play, resolve)
+                    if r:
+                        out.append(r)
+                    continue
                 spot_td = not no_play and "NULLIFIED" in pre and "TOUCHDOWN" in pre
                 if not (no_play or spot_td):
                     continue
@@ -565,6 +570,41 @@ def flagged_plays(lg):
                                 "flagged": ((pen.group(2) or "the team").strip() + f" ({flag_team})") if pen else "",
                                 "own": bool(pen) and flag_team == team, "game": g["name"]})
     return out
+
+
+def _flagged_return(lg, g, w, pl, pre, pen_text, no_play, resolve):
+    """A kick or punt return cut short by a flag. A "No Play" (re-kick) wipes the whole return; a foul by the return
+    team during it counts the return only up to the flag, so the yards after it (and any touchdown) are lost."""
+    ret = re.search(r"\. ([A-Z][a-z]?\.[A-Z][\w'-]+(?: [A-Z][\w'-]+)?) [^.]*?(?:(?:to|at) ([A-Z]{2,3}) (\d+)|for) [^.]*?(?:for )?(-?\d+) yards?", pre)
+    pen = _PEN.search("PENALTY" + pen_text)
+    spot = re.search(r"enforced at (?:([A-Z]{2,3}) )?(\d+)", pen_text)
+    ref = next(((x.get("athlete") or {}).get("$ref") or "" for x in pl.get("participants") or [] if x.get("type") == "returner"), "")
+    if not ret or not pen or "/athletes/" not in ref:
+        return None
+    pid = resolve(ref.split("/athletes/")[1].split("?")[0], g, w, ret.group(1))
+    if not pid:
+        return None
+    team = lg.proj(w)[1].get(pid) or (lg.players.get(pid) or {}).get("team")
+    flag_team = _ESPN_TEAM.get(pen.group(1), pen.group(1))
+    yards, td = int(ret.group(4)), "TOUCHDOWN" in pre.split(ret.group(1), 1)[1]
+    pos = lambda abbr, n: 50 if not abbr else (int(n) if _ESPN_TEAM.get(abbr, abbr) == team else 100 - int(n))
+    if no_play:
+        lost = yards
+    elif flag_team == team and spot:  # the return team's own foul: everything past the flag comes back
+        end = 100 if td else (pos(ret.group(2), ret.group(3)) if ret.group(2) else None)
+        if end is None:
+            return None
+        lost = max(0, end - pos(spot.group(1), spot.group(2)))
+    else:
+        return None
+    kind = "kick return" if "kicks" in pre else "punt return"
+    sc = lg.scoring
+    pts = lost * sc.get("kr_yd" if kind == "kick return" else "pr_yd", 0) + (td * sc.get("st_td", 0))
+    if pts <= 0:
+        return None
+    return {"week": w, "pid": pid, "player": lg.name_of(pid), "pos": lg.pos_of(pid), "pts": round(pts, 2), "yards": yards,
+            "lost_yards": lost, "td": td, "kind": kind, "spot": not no_play, "penalty": pen.group(3).strip(),
+            "flagged": (pen.group(2) or "the team").strip() + f" ({flag_team})", "own": flag_team == team, "game": g["name"]}
 
 
 def flagged_away(lg):
