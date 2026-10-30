@@ -1814,6 +1814,8 @@ def _flag_play(p):
     what = {"run": f"{p['yards']}-yd {'TD run' if p['td'] else 'run'}",
             "catch": f"{p['yards']}-yd {'TD catch' if p['td'] else 'catch'}",
             "pass": f"{p['yards']}-yd {'TD pass' if p['td'] else 'completion'}"}[p["kind"]]
+    if p.get("spot"):
+        what += f' <span class="muted">(TD and the last {p["lost_yards"]} yds called back)</span>'
     tag = ('<span class="chip" style="color:var(--bad)">own team’s flag</span>' if p["own"]
            else '<span class="chip" style="color:var(--ink3)">defense’s flag</span>')
     return what, f'{esc(p["penalty"])} on {esc(p["flagged"])} {tag}'
@@ -1860,7 +1862,8 @@ def flagged_section(d):
     lists = (f'<div class="grid2" style="margin-top:14px"><div class="panel"><h3>Biggest plays wiped out</h3><table>{bl}</table></div>'
              f'<div class="panel"><h3>Players who lost the most</h3><table>{pl}</table></div></div>')
     return (table + lists +
-            '<p class="note">Runs and completions that were called back by an accepted penalty (“No Play”), scored with this league’s settings: '
+            '<p class="note">Runs and completions that were called back by an accepted penalty (“No Play”), plus touchdowns taken away by a '
+            'flag during the play (the yards up to the flag still count, so only the score and the yards after it are lost). Scored with this league’s settings: '
             'rushing and receiving yards, the half point per catch, passing yards and any touchdown that came off the board. The team table counts '
             'only players in that fantasy team’s starting lineup that week; the lists count every player. A flag on the defense usually gave the '
             'offense yards back, so it’s shown separately. Penalties enforced after a play that still counted, sacks, incompletions and kicks are left out. '
