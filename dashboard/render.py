@@ -1904,7 +1904,7 @@ def kicker_table(rows):
                    f'<div class="muted" style="font-size:12px">{esc(" → ".join(k["owners"]))}</div></td>{"".join(cells)}'
                    f'<td class="n" data-v="{xa and xm / xa:.3f}">{xm:.0f}/{xa:.0f}</td>'
                    f'<td class="n team">{k["made"]:.0f}</td><td class="n">{k["missed"]:.0f}</td>'
-                   f'<td class="n {"neg" if k["lost"] < 0 else "muted"}" data-v="{k["lost"]:.1f}">{k["lost"]:.1f}</td>'
+                   f'<td class="n {"neg" if k["lost"] < 0 else "muted"}" data-v="{-k["lost"]:.1f}">{k["lost"]:.1f}</td>'
                    f'<td class="n" data-v="{k["long_share"]:.3f}">{k["long_share"]:.0%}</td>'
                    f'<td class="n" data-v="{k["season_long"]}">{k["season_long"]:.0f}</td><td class="n" data-v="{k["career_long"] or 0}">{k["career_long"] or "—"}</td>'
                    f'<td class="n team" data-v="{k["ppg"]:.2f}">{k["ppg"]:.1f}</td></tr>')
