@@ -1808,3 +1808,60 @@ def peaks_switch(by_top):
     return (f'<div class="switch"><div class="hl-bar" style="margin-bottom:10px"><label for="peaks-top">Count</label>'
             f'<select id="peaks-top" autocomplete="off">{opts}</select>'
             f'<span class="muted sort-hint">which of each opposing player’s best games count as a career day</span></div>{panels}</div>')
+
+
+def _flag_play(p):
+    what = {"run": f"{p['yards']}-yd {'TD run' if p['td'] else 'run'}",
+            "catch": f"{p['yards']}-yd {'TD catch' if p['td'] else 'catch'}",
+            "pass": f"{p['yards']}-yd {'TD pass' if p['td'] else 'completion'}"}[p["kind"]]
+    tag = ('<span class="chip" style="color:var(--bad)">own team’s flag</span>' if p["own"]
+           else '<span class="chip" style="color:var(--ink3)">defense’s flag</span>')
+    return what, f'{esc(p["penalty"])} on {esc(p["flagged"])} {tag}'
+
+
+def flagged_section(d):
+    rows = d["teams"]
+    mx = max((t["total"] for t in rows), default=0) or 1
+
+    def cells(t):
+        return (f'<td class="barcell"><div class="stack" style="height:12px;min-width:120px;background:var(--grid)">'
+                f'<span data-pos="own" style="flex:{t["own"] / mx:.4f};background:var(--bad)" title="Own team’s flags: {t["own"]:.1f}"></span>'
+                f'<span data-pos="theirs" style="flex:{t["theirs"] / mx:.4f};background:var(--c1)" title="Defense’s flags: {t["theirs"]:.1f}"></span>'
+                f'<span style="flex:{max(0, 1 - t["total"] / mx):.4f};background:transparent"></span></div></td>'
+                f'<td class="n team">{t["total"]:.1f}</td><td class="n">{t["own"]:.1f}</td><td class="n">{t["theirs"]:.1f}</td>'
+                f'<td class="n muted">{len(t["plays"])}</td>')
+
+    def detail(t):
+        if not t["plays"]:
+            return '<span class="muted">No starter has had a play called back yet.</span>'
+        trs = []
+        for p in t["plays"]:
+            what, why = _flag_play(p)
+            trs.append(f'<tr><td class="muted">Wk {p["week"]}</td><td><b>{esc(p["player"])}</b> <span class="muted">{p["pos"] or ""}</span></td>'
+                       f'<td>{what}</td><td style="font-size:13px">{why}</td><td class="n team neg">−{p["pts"]:.1f}</td></tr>')
+        return f'<table class="picks">{"".join(trs)}</table>'
+    controls = _sort_controls("flags", [("total", "All flags", "Most points wiped out first"),
+                                        ("own", "Own team’s flags", "Most points lost to their players’ own teammates first"),
+                                        ("theirs", "Defense’s flags", "Most points lost to the other side’s flags first")])
+    data = lambda t: {"total": t["total"] + len(t["plays"]) / 1000, "own": t["own"], "theirs": t["theirs"]}
+    legend = ('<div class="legend"><span><i style="background:var(--bad)"></i>Flag on the player’s own team</span>'
+              '<span><i style="background:var(--c1)"></i>Flag on the defense</span></div>')
+    table = (f'<div class="panel scroll sortbars">{controls}{legend}<table class="expand"><thead><tr><th></th><th>Team</th>'
+             f'<th class="barcell">Starters’ points wiped out</th><th class="n">Total</th><th class="n">Own team’s flags</th>'
+             f'<th class="n">Defense’s flags</th><th class="n">Plays</th></tr></thead><tbody>{_xrows("fl", rows, cells, detail, 7, data)}</tbody></table></div>')
+
+    def big(p):
+        what, why = _flag_play(p)
+        by = f'<div class="muted" style="font-size:12px">Wk {p["week"]} · {esc(p["game"])}' + (f' · started by {esc(p["started_by"])}' if p.get("started_by") else "") + '</div>'
+        return f'<td><b>{esc(p["player"])}</b> {what}{by}<div style="font-size:12.5px">{why}</div></td><td class="n team neg">−{p["pts"]:.1f}</td>'
+    bl = "".join(f'<tr><td class="muted">{i}</td>{big(p)}</tr>' for i, p in enumerate(d["biggest"], 1))
+    pl = "".join(f'<tr><td class="muted">{i}</td><td><b>{esc(x["player"])}</b> <span class="muted">{x["pos"] or ""}</span></td>'
+                 f'<td class="n muted">{x["n"]} plays</td><td class="n team neg">−{x["pts"]:.1f}</td></tr>' for i, x in enumerate(d["players"], 1))
+    lists = (f'<div class="grid2" style="margin-top:14px"><div class="panel"><h3>Biggest plays wiped out</h3><table>{bl}</table></div>'
+             f'<div class="panel"><h3>Players who lost the most</h3><table>{pl}</table></div></div>')
+    return (table + lists +
+            '<p class="note">Runs and completions that were called back by an accepted penalty (“No Play”), scored with this league’s settings: '
+            'rushing and receiving yards, the half point per catch, passing yards and any touchdown that came off the board. The team table counts '
+            'only players in that fantasy team’s starting lineup that week; the lists count every player. A flag on the defense usually gave the '
+            'offense yards back, so it’s shown separately. Penalties enforced after a play that still counted, sacks, incompletions and kicks are left out. '
+            'From ESPN’s play-by-play. Click a team for its plays.</p>')
