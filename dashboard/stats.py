@@ -279,9 +279,10 @@ def waiver_bids(lg):
     return sorted(out.values(), key=lambda x: -x["over"])
 
 
-def drop_regrets(lg, top=12, skip=("K", "DEF"), min_games=2):
-    """Players a team cut who then scored, ranked by points since the drop. Kickers and defenses are left out:
-    streaming them is a plan, not a mistake. A team re-adding the player ends that drop's window."""
+def drop_regrets(lg, top=10, skip=("K", "DEF"), min_games=2):
+    """Players a team cut who then outscored both what he gave that team and a replacement-level starter at his position.
+    Kickers and defenses are left out: streaming them is a plan, not a mistake. A team re-adding the player ends that
+    drop's window."""
     rostered = {(m["roster_id"], w): set(m.get("players") or []) for w in lg.weeks for m in lg.matchups[w]}
     started = {(m["roster_id"], w): set(m.get("starters") or []) for w in lg.weeks for m in lg.matchups[w]}
     adds = collections.defaultdict(list)  # (team, player) -> times the team added him
@@ -299,7 +300,9 @@ def drop_regrets(lg, top=12, skip=("K", "DEF"), min_games=2):
             eff = lg.first_week_after(t["status_updated"] / 1000)
             back = min((a for a in adds[(r, p)] if a > t["status_updated"]), default=None)
             end = lg.first_week_after(back / 1000) if back else lg.weeks[-1] + 1
-            before = [w for w in lg.weeks if w < eff and p in rostered.get((r, w), ()) and p in lg.played[w]]
+            nfl = lambda w: lg.proj(w)[1].get(p) or (lg.players.get(p) or {}).get("team")
+            # every week on the roster counts, bench and did-not-play weeks included (they scored 0 for the team); byes don't
+            before = [w for w in lg.weeks if w < eff and p in rostered.get((r, w), ()) and nfl(w) not in lg.bye.get(w, set())]
             after = [w for w in lg.weeks if eff <= w < end and p in lg.played[w]]
             if not after:
                 continue
@@ -315,12 +318,15 @@ def drop_regrets(lg, top=12, skip=("K", "DEF"), min_games=2):
                         # points he scored while in another team's starting lineup, ie. the damage done elsewhere
                         "started_elsewhere": sum(lg.pts[p].get(w, 0) for w in after
                                                  if any(p in started.get((o, w), ()) for o in lg.team if o != r))})
+    repl = _replacement(lg)
     for x in out:
         x["before_ppg"] = x["before"] / x["before_games"] if x["before_games"] else 0.0
         x["after_ppg"] = x["after"] / x["after_games"]
-        x["gain"] = x["after_ppg"] - x["before_ppg"]
-    # ranked by how much better he's averaged since the drop, so a long stretch on waivers alone doesn't make a drop look bad;
-    # at least two games since, so one big week doesn't top the list
+        x["repl"] = repl.get(x["pos"], 0.0)
+        # how much better he's been per game than whatever the team could have had anyway: what he gave them, or a
+        # replacement-level starter at his position, whichever is higher. Per game, so time on waivers doesn't count,
+        # and against replacement level, so quarterbacks' bigger numbers don't crowd everyone else out.
+        x["gain"] = x["after_ppg"] - max(x["before_ppg"], x["repl"])
     out = [x for x in out if x["after_games"] >= min_games and x["gain"] > 0]
     out.sort(key=lambda x: -x["gain"])
     return out[:top]
