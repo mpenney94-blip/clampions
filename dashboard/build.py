@@ -244,7 +244,7 @@ def build(league_id, out, with_winprob=True, tabs=""):
         "trends": ("Scoring trends", render.trend_cards(tr_rows, tr_league, lg.weeks)),
         "projections": ("Beating the projections", render.projection_table(proj_rows, proj_over, proj_under, last)),
         "peaks": ("Opponents' career days", '<p class="lede">Did opponents keep having their best game of the year against you?</p>'
-                  + render.peaks_table(weekly.opponent_peaks(lg))),
+                  + render.peaks_switch({k: weekly.opponent_peaks(lg, k) for k in (1, 2, 3)})),
         "close": ("Close games", render.close_table(*weekly.close_games(lg))),
         "schedule": ("Schedule swap", '<p class="lede">Every team’s record if it had played each other team’s schedule.</p>' + render.swap_table(order, grid)),
         "carry": ("Who carried each team", render.carry_bars(stats.carry(lg))),

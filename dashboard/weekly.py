@@ -422,8 +422,8 @@ def injuries(lg, min_ppg=8.0):
 
 
 # ---------------------------------------------------------------- opponents' career days (season)
-def opponent_peaks(lg, min_games=3, floor=15.0):
-    """For each team: opposing starters who had one of their two best games of the season against it (and at least
+def opponent_peaks(lg, top=2, min_games=3, floor=15.0):
+    """For each team: opposing starters who had one of their `top` best games of the season against it (and at least
     `floor` points, so a scrub's best day doesn't count), versus how many you'd expect by chance. A player with n games,
     k of them qualifying, has a k-in-n chance that any one game is one of them."""
     games = {p: sorted(((lg.pts[p].get(w, 0), w) for w in lg.weeks if p in lg.played[w]), reverse=True) for p in lg.pts}
@@ -439,10 +439,11 @@ def opponent_peaks(lg, min_games=3, floor=15.0):
                 g = games.get(p, [])
                 if p == "0" or p not in lg.played[w] or len(g) < min_games:
                     continue
-                top = [x for x, _ in g if x >= g[1][0] and x >= floor]  # ties with the second-best game count
-                expected += len(top) / len(g)
+                cut = g[min(top, len(g)) - 1][0]  # ties with the last qualifying game count
+                best = [x for x, _ in g if x >= cut and x >= floor]
+                expected += len(best) / len(g)
                 v = lg.pts[p].get(w, 0)
-                if v >= g[1][0] and v >= floor:
+                if v >= cut and v >= floor:
                     avg = sum(x for x, _ in g) / len(g)
                     actual += 1
                     extra += v - avg
