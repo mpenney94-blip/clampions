@@ -1182,18 +1182,20 @@ def drop_table(rows):
         trs.append(f'<tr><td class="n muted">{i}</td><td data-v="{esc(x["player"].lower())}"><b>{esc(x["player"])}</b> <span class="muted">{x["pos"] or ""}</span>'
                    f'<div style="font-size:12.5px">{where}</div></td>'
                    f'<td class="team" style="white-space:nowrap" data-v="{esc(x["team"].lower())}">{esc(x["team"])}<div class="muted" style="font-size:12px;font-weight:400">before week {x["week"]}</div></td>'
-                   f'<td class="n" data-v="{x["before_ppg"]:.2f}">{ppg(x["before"], x["before_games"])}<div class="muted" style="font-size:12px;white-space:nowrap">{x["before_games"]} g · {x["before"]:.1f} pts</div></td>'
+                   f'<td class="n" data-v="{x["before_ppg"]:.2f}">{ppg(x["before"], x["before_games"])}<div class="muted" style="font-size:12px;white-space:nowrap">{x["before_games"]} wk{"" if x["before_games"] == 1 else "s"} · {x["before"]:.1f} pts</div></td>'
+                   f'<td class="n muted" data-v="{x["repl"]:.2f}">{x["repl"]:.1f}<div style="font-size:12px">{x["pos"]}</div></td>'
                    f'<td class="n team" data-v="{x["after_ppg"]:.2f}">{x["after_ppg"]:.1f}<div class="muted" style="font-size:12px;font-weight:400;white-space:nowrap">{x["after_games"]} g · {x["after"]:.1f} pts</div></td>'
                    f'<td class="barcell" data-v="{x["gain"]:.2f}"><div style="display:flex;align-items:center;gap:8px"><div class="track" style="flex:1"><span style="width:{100 * x["gain"] / mx:.1f}%;background:var(--bad)"></span></div>'
                    f'<b class="neg">+{x["gain"]:.1f}</b></div>{hurt}</td>'
                    f'<td class="n" data-v="{x["best"][0]:.1f}">{x["best"][0]:.1f}<div class="muted" style="font-size:12px">wk {x["best"][1]}</div></td></tr>')
-    return (f'<div class="panel scroll"><table class="sortable"><thead><tr><th class="n">#</th><th>Player</th><th>Dropped by</th><th class="n">Avg with them</th>'
-            f'<th class="n">Avg since</th><th class="barcell" aria-sort="descending">Per-game jump</th><th class="n">Best game</th></tr></thead>'
+    return (f'<div class="panel scroll"><table class="sortable"><thead><tr><th class="n">#</th><th>Player</th><th>Dropped by</th><th class="n">Avg with them</th><th class="n">Replacement</th>'
+            f'<th class="n">Avg since</th><th class="barcell" aria-sort="descending">Regret per game</th><th class="n">Best game</th></tr></thead>'
             f'<tbody>{"".join(trs)}</tbody></table></div>'
-            '<p class="note">The players whose drops have aged worst, ranked by how much more they’ve averaged per game since the team let them go '
-            '(wherever they landed, including weeks on waivers) than they did for that team. Averages only count games he actually played, so time '
-            'sitting on waivers doesn’t count against or for a drop. Players need at least 2 games since the drop; a player cut before playing a game '
-            'for the team counts as 0 a game with them. '
+            '<p class="note">The players whose drops have aged worst. Regret per game = what he’s averaged since the drop (games he played, wherever he '
+            'landed) minus the higher of what he averaged for that team (every week on the roster, bench and did-not-play weeks counting as 0, '
+            'byes skipped) and a replacement-level starter at his position (roughly the worst starter in the league there: about 18 for a QB, '
+            '11 for a WR, 10 for an RB, 8 for a TE). So a drop only counts if he’s been better than both what he gave the team and what was easy to '
+            'find anyway, which keeps quarterbacks’ big numbers from crowding out everyone else. At least 2 games since the drop. '
             'If the team picked him back up, the count stops there. Kickers and defenses are left out, since streaming them is the plan. Click a column header to sort.</p>')
 
 
@@ -1344,10 +1346,10 @@ def alltime_sections(sums):
     moves = (f'<div class="panel scroll"><h3 class="pos">Best waiver pickups</h3><table><thead><tr><th>Season</th><th>Player</th><th>Picked up by</th>'
              f'<th class="n">Bid</th><th class="n">Games</th><th class="n">Points</th></tr></thead><tbody>{ph}</tbody></table></div>'
              f'<div class="panel scroll" style="margin-top:14px"><h3 class="neg">Worst drops</h3><table><thead><tr><th>Season</th><th>Player</th><th>Dropped by</th>'
-             f'<th class="n">Dropped</th><th class="n">Avg with them</th><th class="n">Avg since</th><th class="n">Per-game jump</th></tr></thead><tbody>{dh}</tbody></table></div>'
+             f'<th class="n">Dropped</th><th class="n">Avg with them</th><th class="n">Avg since</th><th class="n">Regret per game</th></tr></thead><tbody>{dh}</tbody></table></div>'
              '<p class="note">Pickups: points scored for the team that picked him up (waiver or free agent), that season. '
-             'Drops: ranked by how much more he averaged per game after the drop (wherever he went, that season) than he did for that team; '
-             'at least 2 games after, kickers and defenses left out.</p>')
+             'Drops: ranked by regret per game, what he averaged after the drop minus the higher of his average for that team and a '
+             'replacement-level starter at his position; at least 2 games after, kickers and defenses left out.</p>')
     # head to head
     h2h = collections.defaultdict(lambda: {"w": 0, "l": 0, "t": 0, "pf": 0.0, "pa": 0.0, "pw": 0, "pl": 0})
     for x in sums:
