@@ -565,6 +565,44 @@ def _finishes(lg):
     return place
 
 
+def big_days(lg, top=20):
+    """The season's best single-game starter scores and worst bench weeks, regular season plus winners-bracket playoff games
+    (not the 5th-place game). Bench gap = best possible lineup minus the one started."""
+    own = lg.owner
+    slates = [(w, lg.matchups[w], False) for w in lg.weeks]
+    if lg.complete and lg.playoff_start:
+        rounds = collections.defaultdict(set)
+        for m in winprob._fetch(f"https://api.sleeper.app/v1/league/{lg.id}/winners_bracket") or []:
+            if m.get("t1") and m.get("t2") and m.get("p") != 5:
+                rounds[lg.playoff_start + m["r"] - 1] |= {m["t1"], m["t2"]}
+        for w, teams in sorted(rounds.items()):
+            slates.append((w, [m for m in lg.client.matchups(lg.id, w) if m["roster_id"] in teams], True))
+    games, bench_ = [], []
+    for w, ms, pl in slates:
+        by_mid = collections.defaultdict(list)
+        for m in ms:
+            by_mid[m.get("matchup_id")].append(m)
+        for m in ms:
+            r, me = m["roster_id"], m["points"] or 0.0
+            opp = [x for x in by_mid[m.get("matchup_id")] if x is not m and m.get("matchup_id")]
+            them = (opp[0]["points"] or 0.0) if opp else None
+            for pid, v in zip(m["starters"], m.get("starters_points") or []):
+                if pid != "0" and v:
+                    games.append({"week": w, "playoff": pl, "owner": own[r], "team": lg.team[r], "pid": pid, "player": lg.name_of(pid),
+                                  "pos": lg.pos_of(pid), "pts": round(v, 2), "score": round(me, 2),
+                                  "opp": round(them, 2) if them is not None else None})
+            pp = m.get("players_points") or {}
+            opt, used = _optimal(lg, pp)
+            gap = opt - me
+            if gap < 0.05:
+                continue
+            benched = sorted((p for p in used if p not in m["starters"]), key=lambda p: -pp[p])
+            bench_.append({"week": w, "playoff": pl, "owner": own[r], "team": lg.team[r], "gap": round(gap, 2), "score": round(me, 2),
+                           "best": round(opt, 2), "opp": round(them, 2) if them is not None else None,
+                           "benched": [[lg.name_of(p), lg.pos_of(p), round(pp[p], 2)] for p in benched[:3]]})
+    return (sorted(games, key=lambda g: -g["pts"])[:top], sorted(bench_, key=lambda b: -b["gap"])[:top])
+
+
 def season_summary(lg):
     """Everything the all-time page needs from one season, keyed by manager (Sleeper owner id), as plain JSON."""
     rec = {r: [0, 0, 0] for r in lg.team}
@@ -623,9 +661,11 @@ def season_summary(lg):
                 sc = {x["roster_id"]: x["points"] or 0.0 for x in lg.client.matchups(lg.id, w)}
                 games.append([w, own[a], round(sc.get(a, 0), 2), own[b], round(sc.get(b, 0), 2), True])
     pickups_ = sorted(pickups(lg), key=lambda a: -a["total"])[:15]
+    big_games, bench_weeks = big_days(lg)
     return {
         "season": lg.season, "complete": lg.complete, "weeks": len(lg.weeks), "playoff_teams": lg.playoff_teams, "teams": teams,
         "keepers": keepers, "trades": trade_rows, "games": games, "rostered": rostered,
+        "big_games": big_games, "bench_weeks": bench_weeks,
         "draft": [{"owner": by_name.get(z["team"]), "team": z["team"], "round": z["round"], "pick": z["pick"], "player": z["player"],
                    "pos": z["pos"], "pts": round(z["pts"], 1), "value": round(z["value"], 1), "keeper": z["keeper"]} for z in draft(lg)],
         "faab": {by_name[x["team"]]: {k: x[k] for k in ("bids", "won", "spent", "over", "fa", "moves", "biggest")} for x in waiver_bids(lg)},
