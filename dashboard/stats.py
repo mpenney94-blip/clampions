@@ -590,8 +590,14 @@ def season_summary(lg):
                       "playoffs": (r in in_playoffs) if lg.complete else None,
                       "finish": finish.get(r) if lg.complete else None} for r in lg.team}
     by_name = {n: own[r] for r, n in lg.team.items()}
-    keepers = [{"player": z["player"], "pos": z["pos"], "owner": by_name.get(z["team"]), "team": z["team"], "round": z["round"],
+    keepers = [{"player": z["player"], "pid": z["pid"], "pos": z["pos"], "owner": by_name.get(z["team"]), "team": z["team"], "round": z["round"],
                 "pick": z["pick"], "pts": round(z["pts"], 1), "value": round(z["value"], 1)} for z in draft(lg) if z["keeper"]]
+    held = collections.defaultdict(collections.Counter)  # owner -> player -> regular-season weeks on the roster
+    for w in lg.weeks:
+        for m in lg.matchups[w]:
+            for p in m.get("players") or []:
+                held[own[m["roster_id"]]][p] += 1
+    rostered = {o: {p: [n, lg.name_of(p), lg.pos_of(p)] for p, n in c.items()} for o, c in held.items()}
     trade_rows = []
     for t in trades(lg):
         sides = [{"owner": by_name.get(sd["team"]), "team": sd["team"], "total": round(sd["total"], 1), "picks": sd["picks"],
@@ -611,7 +617,7 @@ def season_summary(lg):
     pickups_ = sorted(pickups(lg), key=lambda a: -a["total"])[:15]
     return {
         "season": lg.season, "complete": lg.complete, "weeks": len(lg.weeks), "playoff_teams": lg.playoff_teams, "teams": teams,
-        "keepers": keepers, "trades": trade_rows, "games": games,
+        "keepers": keepers, "trades": trade_rows, "games": games, "rostered": rostered,
         "draft": [{"owner": by_name.get(z["team"]), "team": z["team"], "round": z["round"], "pick": z["pick"], "player": z["player"],
                    "pos": z["pos"], "pts": round(z["pts"], 1), "value": round(z["value"], 1), "keeper": z["keeper"]} for z in draft(lg)],
         "faab": {by_name[x["team"]]: {k: x[k] for k in ("bids", "won", "spent", "over", "fa", "moves", "biggest")} for x in waiver_bids(lg)},

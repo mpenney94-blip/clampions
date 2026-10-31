@@ -1694,12 +1694,75 @@ def alltime_sections(sums):
                 '<p class="note">Every season added up, including this one so far. Overbid = how much winning claims beat the next-highest bid on the '
                 'same player (the whole bid when nobody else claimed him). Bids include $0 claims. Roster moves = players actually added: waiver claims won plus free agent adds (FA). Biggest spend = the largest single winning bid. Click a column header to sort.</p>')
 
+    # loyalty: players a manager has kept around, season after season
+    possible = collections.Counter()  # owner -> regular-season weeks he's been in the league
+    held = collections.defaultdict(lambda: collections.defaultdict(lambda: {"weeks": 0, "seasons": [], "name": "", "pos": ""}))
+    kept = collections.defaultdict(set)  # (owner, player) -> seasons kept
+    for x in sums:
+        for o in x["teams"]:
+            possible[o] += x["weeks"]
+        for o, ps in x.get("rostered", {}).items():
+            for pid, (n, nm, pos) in ps.items():
+                h = held[o][pid]
+                h["weeks"] += n
+                h["seasons"].append(x["season"])
+                h["name"], h["pos"] = nm, pos
+        for k in x["keepers"]:
+            if k.get("pid") and k["owner"]:
+                kept[(k["owner"], k["pid"])].add(x["season"])
+    ltrs = []
+    rows_l = []
+    for o in owners:
+        ps = held.get(o, {})
+        multi = {pid: h for pid, h in ps.items() if len(h["seasons"]) >= 2 and h["pos"] != "DEF"}
+        total = sum(h["weeks"] for h in ps.values()) or 1
+        rows_l.append((o, ps, multi, sum(h["weeks"] for h in multi.values()) / total))
+    for i, (o, ps, multi, share) in enumerate(sorted(rows_l, key=lambda r: (-len(r[2]), -r[3]))):
+        top = sorted(multi.items(), key=lambda kv: (-kv[1]["weeks"], kv[1]["name"]))
+        longest = top[0][1] if top else None
+        nkept = len({pid for (oo, pid) in kept if oo == o})
+        long_txt = (f'{esc(longest["name"])} <span class="muted">{longest["weeks"]}/{possible[o]} wks</span>' if longest else "—")
+
+        def tag(pid):
+            ss = sorted(kept.get((o, pid), ()))
+            return "".join(f' <span class="chip medal m1" title="kept in {s_}">★ kept {s_}</span>' for s_ in ss)
+        det = "".join(f'<tr><td><b>{esc(h["name"])}</b> <span class="muted">{h["pos"] or ""}</span>{tag(pid)}</td>'
+                      f'<td class="n team">{h["weeks"]}/{possible[o]}</td><td class="n muted">{h["weeks"] / possible[o]:.0%}</td>'
+                      f'<td class="muted">{", ".join(h["seasons"])}</td></tr>' for pid, h in top) or \
+            '<tr><td class="muted">Nobody has stuck around for two seasons yet.</td></tr>'
+        ltrs.append(f'<tr class="xrow" tabindex="0" role="button" aria-expanded="false" aria-controls="loy-{i}" '
+                    f'data-n="{len(multi)}" data-share="{share:.4f}" data-kept="{nkept}" data-long="{longest["weeks"] if longest else 0}">'
+                    f'<td class="muted rank"></td><td><span class="chev" aria-hidden="true">▸</span> {who(o)}</td>'
+                    f'<td class="n team">{len(multi)}</td><td class="n">{share:.0%}</td><td class="n">{nkept}</td>'
+                    f'<td style="white-space:nowrap">{long_txt}</td></tr>'
+                    f'<tr class="xdetail" id="loy-{i}" hidden><td colspan="6"><table class="picks"><tr><td class="muted">Player</td>'
+                    f'<td class="n muted">Weeks on roster</td><td class="n muted">Share</td><td class="muted">Seasons</td></tr>{det}</table></td></tr>')
+    lcontrols = _sort_controls("loyal", [("n", "Repeat players", "Most players carried across seasons first"),
+                                         ("share", "Share of roster weeks", "Most roster time from repeat players first"),
+                                         ("long", "Longest tenure", "Longest-held player first"),
+                                         ("kept", "Keepers used", "Most keepers first")])
+    loyalty = (f'<div class="panel scroll sortbars">{lcontrols}<table class="expand"><thead><tr><th></th><th>Manager</th>'
+               f'<th class="n">Repeat players</th><th class="n">Roster weeks from them</th><th class="n">Keepers used</th>'
+               f'<th>Longest-held player</th></tr></thead><tbody>{"".join(ltrs)}</tbody></table></div>')
+    every = sorted(((o, pid, h) for o, ps in held.items() for pid, h in ps.items() if h["pos"] != "DEF" and len(h["seasons"]) >= 2),
+                   key=lambda t: -t[2]["weeks"])[:15]
+    btrs = "".join(f'<tr><td class="muted">{i}</td><td><b>{esc(h["name"])}</b> <span class="muted">{h["pos"] or ""}</span>'
+                   + "".join(f' <span class="chip medal m1">★ kept {s_}</span>' for s_ in sorted(kept.get((o, pid), ())))
+                   + f'</td><td>{who(o)}</td><td class="n team">{h["weeks"]}/{possible[o]}</td><td class="muted">{", ".join(h["seasons"])}</td></tr>'
+                   for i, (o, pid, h) in enumerate(every, 1))
+    loyalty += (f'<div class="panel scroll" style="margin-top:14px"><h3>Longest-held players</h3><table><thead><tr><th></th><th>Player</th>'
+                f'<th>Manager</th><th class="n">Weeks on roster</th><th>Seasons</th></tr></thead><tbody>{btrs}</tbody></table></div>'
+                '<p class="note">Regular-season weeks a player spent on a manager’s roster, starting or on the bench, out of all the regular-season weeks '
+                'that manager has played since 2023 (this season so far included). Repeat players = on the same manager’s roster in at least two '
+                'seasons; team defenses are left out. ★ marks the seasons a player was a keeper for that manager. Click a manager for his players.</p>')
+
     return [("alltime-standings", "All-time standings", standings), ("head-to-head", "Head to head", headtohead),
             ("finishes", "Where everyone finished", finishes), ("champions", "Champions and last places", champs),
             ("playoff-records", "Playoff records", playoffs_html), ("record-book", "Record book", record_book),
             ("luck", "All-time luck", luck_html), ("streaks", "Streaks", streak_html), ("keepers", "Keepers", keep_html),
             ("draft-history", "Draft history", draft_html), ("alltime-trades", "Most lopsided trades", trade_html),
             ("tendencies", "Manager tendencies", tendencies), ("alltime-overbids", "Waiver overbids", overbids),
+            ("loyalty", "Who sticks with their guys", loyalty),
             ("moves", "Best pickups and worst drops", moves)]
 
 
