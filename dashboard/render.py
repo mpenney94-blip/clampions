@@ -2085,8 +2085,8 @@ def roster_profile_table(rows, vet=8):
             f'<th class="n">Starters’ age</th><th class="n">Roster age</th><th class="n">Avg NFL yrs</th><th class="n">Rookies</th>'
             f'<th class="n">Vets ({vet}+)</th><th class="n">Missed / 17</th><th class="n">Hurt now</th><th>Oldest / youngest</th></tr></thead>'
             f'<tbody>{_xrows("rp", rows, cells, detail, 10, data)}</tbody></table></div>'
-            '<p class="note">Current rosters, kickers and defenses left out. Starters = the players who have started the most for that team this '
-            f'season (as many as there are lineup spots). Veterans have {vet}+ NFL seasons. Missed / 17 = games the team’s regular starters have missed '
+            '<p class="note">Current rosters, kickers included; team defenses are left out since they have no age or experience. Starters = the players who have started the most for that team this '
+            f'season (as many as there are lineup spots other than defense). Veterans have {vet}+ NFL seasons. Missed / 17 = games the team’s regular starters have missed '
             'per 17 their NFL teams played, across every season since 2023 (Sleeper’s game logs start there), counting only seasons a player was a '
             'real contributor (6+ points a game when he played), so backups who never get in aren’t counted as hurt. It can’t tell an injury from a '
             'suspension or a benching. Hurt now = currently listed out, doubtful, IR or PUP. Click a team for its players.</p>')

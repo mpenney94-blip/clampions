@@ -822,7 +822,7 @@ def coach_summary(lg):
 
 
 # ---------------------------------------------------------------- roster age, experience and injury history (season)
-def availability_history(lg, min_ppg=6.0, positions=("QB", "RB", "WR", "TE")):
+def availability_history(lg, min_ppg=6.0, positions=("QB", "RB", "WR", "TE", "K")):
     """{player: {"played", "possible", "seasons"}} across every season Sleeper has (2023 on): games played versus games his
     NFL team played while he was on it. A season only counts if he was a real contributor (min_ppg when he played), so
     backups who dress and never play aren't counted as hurt."""
@@ -882,13 +882,13 @@ def roster_profile(lg, vet=8):
         for m in lg.matchups[w]:
             for p in m["starters"]:
                 starts[(m["roster_id"], p)] += 1
-    n_start = sum(1 for sl in lg.slots if sl not in ("K", "DEF"))  # kickers and defenses aren't in this table
+    n_start = sum(1 for sl in lg.slots if sl != "DEF")  # team defenses aren't in this table
     out = []
     for r, name in lg.team.items():
         players = []
         for pid in lg.roster_now.get(r, ()):
             info = lg.players.get(pid) or {}
-            if lg.pos_of(pid) in ("K", "DEF") or info.get("age") is None:
+            if lg.pos_of(pid) == "DEF" or info.get("age") is None:  # a team defense has no age or experience
                 continue
             a = avail.get(pid)
             players.append({"pid": pid, "player": lg.name_of(pid), "pos": lg.pos_of(pid), "age": info.get("age"),
