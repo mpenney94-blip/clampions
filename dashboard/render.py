@@ -276,16 +276,19 @@ def swap_table(order, grid):
 def bench_table(rows):
     mx = max(r["lost"] for r in rows) or 1
     out = ['<div class="panel scroll"><table><thead><tr><th>Team</th><th class="barcell">Points left on bench</th><th class="n"></th>'
-           '<th>Cost</th><th>Biggest benching</th></tr></thead><tbody>']
+           '<th>Cost</th><th>Biggest benching</th><th class="n">Perfect lineups</th></tr></thead><tbody>']
     for r in rows:
         f = r["flips"]
         cost = f'<span class="neg">{len(f)} {"loss" if len(f) == 1 else "losses"}</span> <span class="muted">(Wk {", ".join(map(str, f))})</span>' if f else ""
         w = r["worst"]
         worst = f'{esc(w["player"])} <span class="muted">{w["pts"]:.1f} · Wk {w["week"]}</span>' if w else ""
         out.append(f'<tr><td class="team">{esc(r["team"])}</td><td class="barcell"><div class="track"><span style="width:{100 * r["lost"] / mx:.1f}%"></span></div></td>'
-                   f'<td class="n team">{r["lost"]:.1f}</td><td style="white-space:nowrap">{cost}</td><td>{worst}</td></tr>')
+                   f'<td class="n team">{r["lost"]:.1f}</td><td style="white-space:nowrap">{cost}</td><td>{worst}</td>'
+                   f'<td class="n" style="white-space:nowrap">' + (f'<b class="pos">{len(r["perfect"])}</b> <span class="muted">(Wk {", ".join(map(str, r["perfect"]))})</span>'
+                                                                    if r.get("perfect") else '<span class="muted">0</span>') + '</td></tr>')
     out.append('</tbody></table></div><p class="note">Best lineup = the highest-scoring legal lineup from that week’s roster, picked after the games. '
-               'Cost = losses that lineup would have turned into wins.</p>')
+               'Cost = losses that lineup would have turned into wins. Perfect lineups = weeks with every starter in the best lineup '
+               '(ties go to the player started).</p>')
     return "".join(out)
 
 
