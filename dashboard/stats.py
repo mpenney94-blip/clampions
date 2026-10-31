@@ -253,8 +253,13 @@ def waiver_bids(lg):
         if t["type"] == "waiver" and t.get("adds"):
             for pid in t["adds"]:
                 runs[(pid, t["status_updated"] // 60000)].append(t)
-    out = {r: {"team": n, "bids": 0, "won": 0, "spent": 0, "over": 0, "claims": [], "biggest": {"bid": 0, "player": None, "week": None}}
+    out = {r: {"team": n, "bids": 0, "won": 0, "spent": 0, "over": 0, "fa": 0, "claims": [], "biggest": {"bid": 0, "player": None, "week": None}}
            for r, n in lg.team.items()}
+    for t in lg.transactions:  # free agent adds: no bid, but still a roster move
+        if t["type"] == "free_agent" and t["status"] == "complete":
+            for pid, r in (t.get("adds") or {}).items():
+                if r in out:
+                    out[r]["fa"] += 1
     for (pid, _), ts in runs.items():
         bid = lambda t: (t.get("settings") or {}).get("waiver_bid", 0)
         win = next((t for t in ts if t["status"] == "complete"), None)
@@ -278,6 +283,7 @@ def waiver_bids(lg):
             out[r]["bids"] += 1
             out[r]["claims"].append(c)
     for x in out.values():
+        x["moves"] = x["bids"] + x["fa"]
         x["claims"].sort(key=lambda c: (c["week"], -c["bid"]))
     return sorted(out.values(), key=lambda x: -x["over"])
 
@@ -604,7 +610,7 @@ def season_summary(lg):
         "keepers": keepers, "trades": trade_rows, "games": games,
         "draft": [{"owner": by_name.get(z["team"]), "team": z["team"], "round": z["round"], "pick": z["pick"], "player": z["player"],
                    "pos": z["pos"], "pts": round(z["pts"], 1), "value": round(z["value"], 1), "keeper": z["keeper"]} for z in draft(lg)],
-        "faab": {by_name[x["team"]]: {k: x[k] for k in ("bids", "won", "spent", "over", "biggest")} for x in waiver_bids(lg)},
+        "faab": {by_name[x["team"]]: {k: x[k] for k in ("bids", "won", "spent", "over", "fa", "moves", "biggest")} for x in waiver_bids(lg)},
         "bench": {by_name[x["team"]]: round(x["lost"], 1) for x in bench(lg)},
         "pickups": [{"player": a["player"], "pos": a["pos"], "owner": by_name.get(a["team"]), "team": a["team"], "bid": a["bid"],
                      "games": a["games"], "total": round(a["total"], 1)} for a in pickups_],
