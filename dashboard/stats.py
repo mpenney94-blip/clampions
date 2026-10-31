@@ -646,6 +646,34 @@ def stat_line(st, scoring, pos):
     return out
 
 
+def start_sit(lg):
+    """{owner: [right calls, lineup spots, perfect weeks, weeks]} over the regular season. A lineup spot is a right call when
+    the player started there belongs in the best possible lineup from that week's roster (ties go to the player started);
+    an empty spot is a wrong call."""
+    out = {}
+    for w in lg.weeks:
+        for m in lg.matchups[w]:
+            pp = m.get("players_points") or {}
+            starters = [p for p in m["starters"] if p != "0"]
+            pp = {p: v for p, v in pp.items() if lg.pos_of(p)}
+            # best lineup, with ties broken toward the players actually started
+            avail = sorted(pp.items(), key=lambda kv: (-kv[1], kv[0] not in starters))
+            used = []
+            for sl in sorted(lg.slots, key=lambda sl: sl in FLEX):
+                ok = FLEX.get(sl, (sl,))
+                for pid, _ in avail:
+                    if pid not in used and lg.pos_of(pid) in ok:
+                        used.append(pid)
+                        break
+            right = sum(1 for p in starters if p in used)
+            c = out.setdefault(lg.owner[m["roster_id"]], [0, 0, 0, 0])
+            c[0] += right
+            c[1] += len(lg.slots)
+            c[2] += right == len(lg.slots)
+            c[3] += 1
+    return out
+
+
 def big_days(lg, top=20):
     """The season's best single-game starter scores and worst bench weeks, regular season plus winners-bracket playoff games
     (not the 5th-place game). Bench gap = best possible lineup minus the one started."""
@@ -673,13 +701,10 @@ def big_days(lg, top=20):
             bench_.append({"week": w, "playoff": pl, "owner": own[r], "team": lg.team[r], "gap": round(gap, 2), "score": round(me, 2),
                            "best": round(opt, 2), "opp": round(them, 2) if them is not None else None,
                            "benched": [[lg.name_of(p), lg.pos_of(p), round(pp[p], 2)] for p in benched[:3]]})
-    played = lambda g: g["pid"].isalpha() or (week_stats(lg, g["week"]).get(g["pid"]) or {}).get("gp")  # not a starter who sat out
-    worst = sorted((g for g in games if g["pts"] <= 2), key=lambda g: g["pts"])
-    worst = [g for g in worst if played(g)][:10]
     games = sorted(games, key=lambda g: -g["pts"])[:top]
-    for g in games + worst:
+    for g in games:
         g["line"] = stat_line(week_stats(lg, g["week"]).get(g["pid"], {}), lg.scoring, g["pos"])
-    return (games, sorted(bench_, key=lambda b: -b["gap"])[:top], worst)
+    return (games, sorted(bench_, key=lambda b: -b["gap"])[:top])
 
 
 def season_summary(lg):
@@ -740,11 +765,11 @@ def season_summary(lg):
                 sc = {x["roster_id"]: x["points"] or 0.0 for x in lg.client.matchups(lg.id, w)}
                 games.append([w, own[a], round(sc.get(a, 0), 2), own[b], round(sc.get(b, 0), 2), True])
     pickups_ = sorted(pickups(lg), key=lambda a: -a["total"])[:15]
-    big_games, bench_weeks, worst_games = big_days(lg)
+    big_games, bench_weeks = big_days(lg)
     return {
         "season": lg.season, "complete": lg.complete, "weeks": len(lg.weeks), "playoff_teams": lg.playoff_teams, "teams": teams,
         "keepers": keepers, "trades": trade_rows, "games": games, "rostered": rostered,
-        "big_games": big_games, "bench_weeks": bench_weeks, "worst_games": worst_games, "lineups": score_lineups(lg),
+        "big_games": big_games, "bench_weeks": bench_weeks, "startsit": start_sit(lg), "lineups": score_lineups(lg),
         "draft": [{"owner": by_name.get(z["team"]), "team": z["team"], "round": z["round"], "pick": z["pick"], "player": z["player"],
                    "pos": z["pos"], "pts": round(z["pts"], 1), "value": round(z["value"], 1), "keeper": z["keeper"]} for z in draft(lg)],
         "faab": {by_name[x["team"]]: {k: x[k] for k in ("bids", "won", "spent", "over", "fa", "moves", "biggest")} for x in waiver_bids(lg)},

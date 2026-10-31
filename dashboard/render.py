@@ -1825,7 +1825,10 @@ def alltime_sections(sums):
                         partners[o][p] += 1
     faab = collections.defaultdict(collections.Counter)
     bench_ = collections.Counter()
+    ss = collections.defaultdict(lambda: [0, 0, 0, 0])
     for x in sums:
+        for o, v in x.get("startsit", {}).items():
+            ss[o] = [a + b for a, b in zip(ss[o], v)]
         for o, f in x.get("faab", {}).items():
             faab[o].update({k: v for k, v in f.items() if isinstance(v, (int, float))})
         for o, v in x.get("bench", {}).items():
@@ -1840,13 +1843,18 @@ def alltime_sections(sums):
                     f'<td class="n team {"pos" if net > 0 else "neg" if net < 0 else "muted"}" data-v="{net:.1f}">{signed(net, 0) if tcount[o] else "—"}</td>'
                     f'<td data-v="{esc(name[fav[0][0]].lower()) if fav else "~"}">{(who(fav[0][0]) + f" <span class=muted>×{fav[0][1]}</span>") if fav else "<span class=muted>—</span>"}</td>'
                     f'<td class="n">{f["bids"]}</td><td class="n">{f["won"]}</td><td class="n" data-v="{f["spent"]}">${f["spent"]}</td><td class="n neg" data-v="{f["over"]}">${f["over"]}</td>'
-                    f'<td class="n team" data-v="{bench_[o]:.1f}">{bench_[o]:,.0f}</td><td class="n muted" data-v="{bench_[o] / nseas:.1f}">{bench_[o] / nseas:,.0f}</td></tr>')
+                    f'<td class="n team" data-v="{bench_[o]:.1f}">{bench_[o]:,.0f}</td><td class="n muted" data-v="{bench_[o] / nseas:.1f}">{bench_[o] / nseas:,.0f}</td>'
+                    + (f'<td class="n team" data-v="{ss[o][0] / ss[o][1]:.4f}">{ss[o][0] / ss[o][1]:.1%}</td>'
+                       f'<td class="n" data-v="{ss[o][2] / ss[o][3]:.4f}">{ss[o][2]} <span class="muted">of {ss[o][3]}</span></td>' if ss[o][1] else
+                       '<td class="n muted" data-v="0">—</td><td class="n muted" data-v="0">—</td>') + '</tr>')
     tendencies = (f'<div class="panel scroll"><table class="sortable"><thead><tr><th>Manager</th><th class="n">Trades</th><th class="n">Trade net</th><th>Favorite trade partner</th>'
                   f'<th class="n">Waiver bids</th><th class="n">Won</th><th class="n">FAAB spent</th><th class="n">Overbid</th>'
-                  f'<th class="n">Points left on bench</th><th class="n">Per season</th></tr></thead><tbody>{"".join(ttrs)}</tbody></table></div>'
+                  f'<th class="n">Points left on bench</th><th class="n">Per season</th><th class="n">Start/sit</th><th class="n">Perfect lineups</th></tr></thead><tbody>{"".join(ttrs)}</tbody></table></div>'
                   '<p class="note">All seasons, including this one so far. Overbid = how much winning claims beat the next-highest bid by '
                   '(the whole bid when nobody else claimed the player). Trade net = points the players a manager got scored for the rest of that season, minus what the other side got, over every trade. '
-                  'Bench points = the best possible lineup minus the one actually started, every week. Click a column header to sort.</p>')
+                  'Bench points = the best possible lineup minus the one actually started, every week. Start/sit = the share of lineup spots filled '
+                  'with a player who belongs in that week’s best possible lineup (empty spots count as misses; ties go to the player started), '
+                  'regular season. Perfect lineups = weeks with every spot right. Click a column header to sort.</p>')
 
     # waiver overbids, every season
     ob = collections.defaultdict(lambda: {"bids": 0, "won": 0, "spent": 0, "over": 0, "fa": 0, "moves": 0, "biggest": None})
@@ -1991,11 +1999,6 @@ def alltime_sections(sums):
                       'winners-bracket playoff games (not the 5th-place game). Team = that season’s team name. Share = his points as a share of '
                       'the team’s score that week. Click a player for his stat line and what each part was worth under league scoring. '
                       'Click a column header to sort.</p>')
-    wg = sorted(((x["season"], g) for x in sums for g in x.get("worst_games", [])), key=lambda t: t[1]["pts"])[:10]
-    worst_games_html = (games_table(wg, "wg", False)
-                        + '<p class="note">The lowest single-game scores by a player in a starting lineup who actually played, since 2023 '
-                          '(starters who sat out with an injury or a bye don’t count). Regular season and winners-bracket playoff games. Click a player for his '
-                          'stat line and where the points went. Click a column header to sort.</p>')
     bw = sorted(((x["season"], b) for x in sums for b in x.get("bench_weeks", [])), key=lambda t: -t[1]["gap"])[:25]
     def flipped(b):
         return b["opp"] is not None and b["score"] < b["opp"] < b["best"]
@@ -2018,7 +2021,7 @@ def alltime_sections(sums):
     return [("alltime-standings", "All-time standings", standings), ("head-to-head", "Head to head", headtohead),
             ("finishes", "Where everyone finished", finishes), ("champions", "Champions and last places", champs),
             ("playoff-records", "Playoff records", playoffs_html), ("record-book", "Record book", record_book),
-            ("big-games", "Best single-game performances", big_games_html), ("worst-games", "Worst single-game performances", worst_games_html), ("bench-disasters", "Biggest bench disasters", bench_html),
+            ("big-games", "Best single-game performances", big_games_html), ("bench-disasters", "Biggest bench disasters", bench_html),
             ("luck", "All-time luck", luck_html), ("streaks", "Streaks", streak_html), ("keepers", "Keepers", keep_html),
             ("draft-history", "Draft history", draft_html), ("alltime-trades", "Most lopsided trades", trade_html),
             ("tendencies", "Manager tendencies", tendencies), ("alltime-overbids", "Waiver overbids", overbids),
