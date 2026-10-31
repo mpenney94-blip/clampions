@@ -31,6 +31,8 @@ and listen for `pageerror`. Run the build without piping its exit code away; an 
   or `<table class="sortable">` (a menu is built from the headers). Give cells a `data-v` when their text isn't the sort value.
 - Expandable rows (`tr.xrow` + `tr.xdetail`, via `_xrows`) stay attached when sorted; tables inside expanded rows are skipped.
 - Grid/heatmap tables use `.grid-t`, with headers centered over their cells.
+- Every `section[id] > h2` gets a "Save image" button (html2canvas from cdnjs, loaded on first use) that captures the
+  section as currently shown. html2canvas can't parse `color-mix()`, so use plain colors or the `--t1`..`--t6` tints.
 
 ## Workflow conventions
 

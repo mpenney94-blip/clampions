@@ -114,6 +114,20 @@ nav.seasons{display:flex;flex-wrap:wrap;gap:4px;margin:0 0 18px;border-bottom:1p
 nav.seasons a{font:600 15px var(--display);letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);text-decoration:none;padding:8px 14px;border-bottom:3px solid transparent;margin-bottom:-1px}
 nav.seasons a:hover{color:var(--ink)}
 nav.seasons a[aria-current="page"]{color:var(--a);border-bottom-color:var(--a)}
+:root{--t1:rgba(42,120,214,.22);--t2:rgba(235,104,52,.22);--t3:rgba(27,175,122,.22);--t4:rgba(237,161,0,.24);--t5:rgba(232,123,164,.24);--t6:rgba(0,131,0,.22)}
+.snapbtn{float:right;margin-top:6px;font:600 12px var(--body);letter-spacing:0;text-transform:none;color:var(--ink2);background:var(--surface);
+ border:1px solid var(--rule);border-radius:999px;padding:4px 10px;cursor:pointer}
+.snapbtn:hover{border-color:var(--a);color:var(--a)}
+.snapping .scroll,.snapping .tippanel{overflow:visible!important}
+.snapping{width:max-content;min-width:100%;padding:16px;background:var(--bg)}
+.snapping .snapbtn,.snapping .hl-bar select{pointer-events:none}
+.snapcap{font:600 12px var(--display);letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);margin-bottom:6px}
+.snapview{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px}
+.snapview .card{background:var(--surface);border-radius:12px;padding:14px;max-width:min(96vw,1100px);max-height:92vh;display:flex;flex-direction:column;gap:10px}
+.snapview img{max-width:100%;max-height:70vh;object-fit:contain;border:1px solid var(--rule);border-radius:6px;-webkit-touch-callout:default}
+.snapview .row{display:flex;gap:8px;justify-content:space-between;align-items:center;flex-wrap:wrap}
+.snapview button,.snapview a{font:600 14px var(--body);border-radius:8px;padding:8px 14px;border:1px solid var(--rule);background:var(--surface);color:var(--ink);cursor:pointer;text-decoration:none}
+.snapview .go{background:var(--a);color:#fff;border-color:var(--a)}
 th.sorth{cursor:pointer;user-select:none}
 th.sorth:hover{color:var(--ink)}
 th.sorth[aria-sort]::after{content:" ▼";font-size:.8em;color:var(--a)}
@@ -874,6 +888,61 @@ document.querySelectorAll('.trend-card').forEach(function (card) {
     });
   }
   document.querySelectorAll('.sortbars table, table.sortable').forEach(setup);
+})();
+// Save image: a button on every section heading turns the section, exactly as it looks now (sort, expanded rows,
+// toggles), into a PNG. On a phone the share sheet saves it to Photos; pressing and holding the preview works too.
+(function () {
+  var lib = null;
+  function load() {
+    if (window.html2canvas) return Promise.resolve();
+    if (!lib) lib = new Promise(function (ok, bad) {
+      var sc = document.createElement('script');
+      sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+      sc.onload = ok; sc.onerror = bad; document.head.appendChild(sc);
+    });
+    return lib;
+  }
+  function slug(x) { return x.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); }
+  function show(blob, name) {
+    var url = URL.createObjectURL(blob), file = new File([blob], name, { type: 'image/png' });
+    var v = document.createElement('div'); v.className = 'snapview';
+    v.innerHTML = '<div class="card"><img alt="Saved table"><div class="row"><span class="muted" style="font-size:13px">On iPhone: Share, then Save Image. Or press and hold the picture.</span>' +
+      '<span style="display:flex;gap:8px"><button type="button" class="close">Close</button><a class="dl">Download</a><button type="button" class="go">Share / Save</button></span></div></div>';
+    v.querySelector('img').src = url;
+    var dl = v.querySelector('.dl'); dl.href = url; dl.download = name;
+    var go = v.querySelector('.go');
+    if (!(navigator.canShare && navigator.canShare({ files: [file] }))) go.remove();
+    else go.addEventListener('click', function () { navigator.share({ files: [file], title: name }).catch(function () {}); });
+    function close() { v.remove(); URL.revokeObjectURL(url); }
+    v.querySelector('.close').addEventListener('click', close);
+    v.addEventListener('click', function (e) { if (e.target === v) close(); });
+    document.body.appendChild(v);
+  }
+  function snap(sec, btn) {
+    btn.disabled = true; var label = btn.textContent; btn.textContent = 'Saving…';
+    load().then(function () {
+      var title = (sec.querySelector('h2') || {}).childNodes ? sec.querySelector('h2').childNodes[0].textContent.trim() : 'table';
+      var cap = document.createElement('div'); cap.className = 'snapcap';
+      cap.textContent = (document.querySelector('header.site h1') || document.querySelector('h1') || { textContent: '' }).textContent.trim() + ' · ' + title + ' · ' +
+        new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      sec.insertBefore(cap, sec.firstChild); sec.classList.add('snapping');
+      var bg = getComputedStyle(document.body).backgroundColor;
+      return window.html2canvas(sec, { backgroundColor: bg, scale: Math.min(2, window.devicePixelRatio || 2), useCORS: true,
+        windowWidth: Math.max(document.documentElement.clientWidth, sec.scrollWidth + 40),
+        ignoreElements: function (el) { return el.classList && (el.classList.contains('snapbtn') || el.classList.contains('totop')); } })
+        .then(function (canvas) {
+          cap.remove(); sec.classList.remove('snapping');
+          return new Promise(function (ok) { canvas.toBlob(ok, 'image/png'); }).then(function (blob) { show(blob, slug(title) + '.png'); });
+        }, function (err) { cap.remove(); sec.classList.remove('snapping'); throw err; });
+    }).catch(function (e) { alert('Couldn’t make the image: ' + e); })
+      .then(function () { btn.disabled = false; btn.textContent = label; });
+  }
+  document.querySelectorAll('section[id] > h2').forEach(function (h) {
+    var b = document.createElement('button'); b.type = 'button'; b.className = 'snapbtn'; b.textContent = '📷 Save image';
+    b.setAttribute('aria-label', 'Save ' + h.textContent.trim() + ' as an image');
+    b.addEventListener('click', function () { snap(h.parentNode, b); });
+    h.appendChild(b);
+  });
 })();
 (function () {
   var pop = null, cur = null;
@@ -1919,7 +1988,7 @@ def draft_board(d, teams):
                 tds.append("<td></td>")
                 continue
             c = pos_i.get(x["pos"], 0)
-            bg = f"background:color-mix(in srgb,var(--c{c}) 22%,var(--surface))" if c else ""
+            bg = f"background:var(--t{c})" if c else ""
             card = (f'<div class="eyebrow">Round {x["round"]} · pick {x["pick"]}{" · keeper" if x["keeper"] else ""}</div>'
                     f'<div style="font-weight:700;font-size:15px">{esc(x["player"])} <span class="muted" style="font-weight:400">{x["pos"] or ""}</span></div>'
                     f'<div class="muted" style="font-size:12.5px;margin-bottom:6px">Drafted by {esc(x["team"])}</div>'
