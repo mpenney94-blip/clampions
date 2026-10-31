@@ -84,7 +84,9 @@ and listen for `pageerror`. Run the build without piping its exit code away; an 
 A separate repo and Sleeper league (details to come) will reuse this format, with these changes:
 - Rookie draft instead of a full draft: grade rookie classes over several seasons, hit rates by slot, best/worst classes,
   rookie redraft; a startup draft section if one exists in the league history.
-- No keeper sections. Add roster age/contention window and where each team's points come from over the years.
+- No keeper sections. Add a contention window view and where each team's points come from over the years.
+- Carry over "Age, experience and injury history" (`weekly.roster_profile`). It matters even more in dynasty; consider
+  adding projected age next season and an age-weighted value of each roster.
 - Trades judged across seasons, with traded draft picks valued by who was eventually drafted with them.
 - A future draft pick ownership table (Sleeper traded picks).
 - Taxi squad and IR players left out of bench and lineup stats.
