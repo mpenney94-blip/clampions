@@ -923,8 +923,13 @@ document.querySelectorAll('.trend-card').forEach(function (card) {
     load().then(function () {
       var title = (sec.querySelector('h2') || {}).childNodes ? sec.querySelector('h2').childNodes[0].textContent.trim() : 'table';
       var cap = document.createElement('div'); cap.className = 'snapcap';
-      cap.textContent = (document.querySelector('header.site h1') || document.querySelector('h1') || { textContent: '' }).textContent.trim() + ' · ' + title + ' · ' +
-        new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      var league = (document.querySelector('header.site h1') || { textContent: '' }).textContent.replace(/: all-time$/, '').trim() || 'We Are The Clampions';
+      var brow = (document.querySelector('.eyebrow') || { textContent: '' }).textContent;
+      var when = /\/alltime\//.test(location.pathname) ? 'All-time' + ((brow.match(/(\d{4}–\d{4})/) || [])[1] ? ' ' + brow.match(/(\d{4}–\d{4})/)[1] : '')
+        : ((brow.match(/(\d{4}) season/) || [])[1] ? brow.match(/(\d{4}) season/)[1] + ' season' : '');
+      var wk = /\/weeks\//.test(location.pathname) && document.querySelector('h1') ? document.querySelector('h1').textContent.trim() : '';
+      cap.textContent = [league, when, wk, title, new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })]
+        .filter(Boolean).join(' · ');
       sec.insertBefore(cap, sec.firstChild); sec.classList.add('snapping');
       var bg = getComputedStyle(document.body).backgroundColor;
       return window.html2canvas(sec, { backgroundColor: bg, scale: Math.min(2, window.devicePixelRatio || 2), useCORS: true,
