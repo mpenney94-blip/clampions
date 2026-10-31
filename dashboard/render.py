@@ -119,6 +119,7 @@ nav.seasons a[aria-current="page"]{color:var(--a);border-bottom-color:var(--a)}
 .xall:hover{border-color:var(--a);color:var(--a)}
 .xall-bar{display:flex;justify-content:flex-end;margin-bottom:8px}
 .snapping .xall{display:none}
+.xpin{position:sticky;left:0;width:min(560px,calc(100vw - 64px))}
 h3.h3-xall{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}h3.h3-xall .xall{margin-left:auto}
 @media (max-width:520px){.snapbtn{font-size:11.5px;padding:3px 9px}}
 section[id]>h2{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
@@ -1961,18 +1962,32 @@ def alltime_sections(sums):
     def wsort(x, g):
         return int(x) * 100 + g["week"]
     bg = sorted(((x["season"], g) for x in sums for g in x.get("big_games", [])), key=lambda t: -t[1]["pts"])[:25]
+    def line_html(g):
+        rows = g.get("line") or []
+        if not rows:
+            return '<span class="muted">No stat line found for this game.</span>'
+        body = "".join(f'<tr><td class="muted">{esc(k)}</td><td>{esc(t) or "<span class=muted>–</span>"}</td>'
+                       f'<td class="n team {"neg" if v < 0 else ""}">{v:+.2f}</td></tr>' for k, t, v in rows)
+        tot = sum(v for _, _, v in rows)
+        note = "" if abs(tot - g["pts"]) < .05 else f"Sleeper scored it {g['pts']:.2f}"
+        foot = (f'<tr><td class="muted">Total</td><td class="muted">{note}</td>'
+                f'<td class="n team">{tot:.2f}</td></tr>')
+        return f'<div class="xpin"><table class="picks">{body}{foot}</table></div>'
     bg_trs = "".join(
-        f'<tr><td class="muted rank">{i}</td><td><b>{esc(g["player"])}</b> <span class="muted">{g["pos"] or ""}</span></td>'
+        f'<tr class="xrow" tabindex="0" role="button" aria-expanded="false" aria-controls="bg-{i}"><td class="muted rank">{i}</td>'
+        f'<td style="white-space:nowrap"><span class="chev" aria-hidden="true">▸</span> <b>{esc(g["player"])}</b> <span class="muted">{g["pos"] or ""}</span></td>'
         f'<td class="n team" data-v="{g["pts"]}">{g["pts"]:.2f}</td><td>{who(g["owner"], g["team"])}</td>'
         f'<td data-v="{wsort(x, g)}" style="white-space:nowrap">{when(x, g)}</td>'
         f'<td data-v="{g["score"] - (g["opp"] if g["opp"] is not None else g["score"]):.2f}" style="white-space:nowrap">{res(g["score"], g["opp"])}</td>'
         f'<td class="n" data-v="{g["pts"] / g["score"] if g["score"] else 0:.4f}">{g["pts"] / g["score"] if g["score"] else 0:.0%}</td></tr>'
+        f'<tr class="xdetail" id="bg-{i}" hidden><td colspan="7">{line_html(g)}</td></tr>'
         for i, (x, g) in enumerate(bg, 1))
-    big_games_html = (f'<div class="panel scroll"><table class="sortable"><thead><tr><th>#</th><th>Player</th><th class="n">Points</th>'
+    big_games_html = (f'<div class="panel scroll"><table class="sortable expand"><thead><tr><th>#</th><th>Player</th><th class="n">Points</th>'
                       f'<th>Team</th><th>When</th><th>Result</th><th class="n">Share of team score</th></tr></thead><tbody>{bg_trs}</tbody></table></div>'
                       '<p class="note">The highest single-game scores by a player in a starting lineup, since 2023. Regular season and '
                       'winners-bracket playoff games (not the 5th-place game). Team = that season’s team name. Share = his points as a share of '
-                      'the team’s score that week. Click a column header to sort.</p>')
+                      'the team’s score that week. Click a player for his stat line and what each part was worth under league scoring. '
+                      'Click a column header to sort.</p>')
     bw = sorted(((x["season"], b) for x in sums for b in x.get("bench_weeks", [])), key=lambda t: -t[1]["gap"])[:25]
     def flipped(b):
         return b["opp"] is not None and b["score"] < b["opp"] < b["best"]

@@ -41,12 +41,14 @@ class League:
         self.matchups = {w: c.matchups(league_id, w) for w in self.weeks}
         self.pts = collections.defaultdict(dict)  # player_id -> week -> league-scored points (anyone, rostered or not)
         self.played = collections.defaultdict(set)  # week -> players who were active for a game
+        self.raw = {}  # week -> player_id -> Sleeper's raw stat line (players who played)
         for w in self.weeks:
             rows = winprob._fetch(f"https://api.sleeper.app/stats/nfl/{self.season}/{w}?season_type=regular"
                                   + "".join(f"&position[]={p}" for p in POSITIONS))
             for r in rows:
                 s = r.get("stats") or {}
                 if s.get("gp") or r["player_id"].isalpha():  # gms_active is set for injured players who sat
+                    self.raw.setdefault(w, {})[r["player_id"]] = s
                     self.pts[r["player_id"]][w] = round(winprob.score_stats(s, self.scoring), 2)
                     self.played[w].add(r["player_id"])
             for m in self.matchups[w]:  # Sleeper's own numbers win where we have them
@@ -594,6 +596,56 @@ def score_lineups(lg, top=5):
     return out
 
 
+def week_stats(lg, w):
+    """Raw stat lines for week w (fetched for playoff weeks, which the season load skips)."""
+    if w not in lg.raw:
+        rows = winprob._fetch(f"https://api.sleeper.app/stats/nfl/{lg.season}/{w}?season_type=regular"
+                              + "".join(f"&position[]={p}" for p in POSITIONS))
+        lg.raw[w] = {r["player_id"]: r.get("stats") or {} for r in rows}
+    return lg.raw[w]
+
+
+_STAT_GROUPS = [("Passing", ("pass_",)), ("Rushing", ("rush_",)), ("Receiving", ("rec",)), ("Returns", ("kr_", "pr_", "st_")),
+                ("Kicking", ("fg", "xp")), ("Fumbles", ("fum",))]
+
+
+def stat_line(st, scoring, pos):
+    """[[group, text, points]] for one player's game: what he did, and what each part was worth under the league's scoring."""
+    pts = collections.Counter()
+    for k, v in st.items():
+        w = scoring.get(k, 0)
+        if not w or not isinstance(v, (int, float)):
+            continue
+        base = k[len("bonus_"):] if k.startswith("bonus_") else k
+        g = "Defense" if pos == "DEF" else next((name for name, pre in _STAT_GROUPS if base.startswith(pre)), "Other")
+        pts[g] += v * w
+    n = lambda k: int(st.get(k, 0) or 0)
+    def join(*parts):
+        return ", ".join(p for p in parts if p)
+    two = lambda k: f"{n(k)} two-point" if n(k) else ""
+    text = {
+        "Passing": join(f"{n('pass_cmp')}/{n('pass_att')}", f"{n('pass_yd')} yds", f"{n('pass_td')} TD" if n("pass_td") else "",
+                        f"{n('pass_int')} INT" if n("pass_int") else "", two("pass_2pt")) if n("pass_att") else "",
+        "Rushing": join(f"{n('rush_att')} car" if n("rush_att") else "", f"{n('rush_yd')} yds" if n("rush_att") or n("rush_yd") else "",
+                        f"{n('rush_td')} TD" if n("rush_td") else "", f"long {n('rush_lng')}" if n("rush_lng") >= 20 else "", two("rush_2pt"))
+                   if n("rush_att") or n("rush_yd") or n("rush_td") or n("rush_2pt") else "",
+        "Receiving": join(f"{n('rec')}/{n('rec_tgt')} catches" if n("rec_tgt") else f"{n('rec')} catches", f"{n('rec_yd')} yds",
+                          f"{n('rec_td')} TD" if n("rec_td") else "", f"long {n('rec_lng')}" if n("rec_lng") >= 20 else "",
+                          two("rec_2pt")) if n("rec") or n("rec_tgt") else "",
+        "Returns": join(f"{n('kr_yd')} kick return yds" if n("kr_yd") else "", f"{n('pr_yd')} punt return yds" if n("pr_yd") else "",
+                        f"{n('st_td') or n('kr_td') + n('pr_td')} return TD" if n("st_td") or n("kr_td") or n("pr_td") else ""),
+        "Kicking": join(f"{n('fgm')}/{n('fga')} FG" + (f" (long {n('fgm_lng')})" if n("fgm") else ""), f"{n('xpm')}/{n('xpa')} XP" if n("xpa") else "")
+                   if n("fga") or n("xpa") else "",
+        "Fumbles": f"{n('fum_lost')} lost" if n("fum_lost") else "",
+        "Defense": join(f"{n('pts_allow')} pts allowed", f"{n('yds_allow')} yds allowed" if "yds_allow" in st else "",
+                        f"{st['sack']:g} sacks" if st.get("sack") else "", f"{n('int')} INT" if n("int") else "",
+                        f"{n('fum_rec')} fumble rec" if n("fum_rec") else "", f"{n('def_td')} TD" if n("def_td") else "",
+                        f"{n('safe')} safety" if n("safe") else "", f"{n('blk_kick')} blocked kick" if n("blk_kick") else "") if pos == "DEF" else "",
+    }
+    out = [[g, text.get(g, ""), round(pts[g], 2)] for g in [g for g, _ in _STAT_GROUPS] + ["Defense", "Other"] if text.get(g) or abs(pts[g]) >= 0.005]
+    return out
+
+
 def big_days(lg, top=20):
     """The season's best single-game starter scores and worst bench weeks, regular season plus winners-bracket playoff games
     (not the 5th-place game). Bench gap = best possible lineup minus the one started."""
@@ -621,7 +673,10 @@ def big_days(lg, top=20):
             bench_.append({"week": w, "playoff": pl, "owner": own[r], "team": lg.team[r], "gap": round(gap, 2), "score": round(me, 2),
                            "best": round(opt, 2), "opp": round(them, 2) if them is not None else None,
                            "benched": [[lg.name_of(p), lg.pos_of(p), round(pp[p], 2)] for p in benched[:3]]})
-    return (sorted(games, key=lambda g: -g["pts"])[:top], sorted(bench_, key=lambda b: -b["gap"])[:top])
+    games = sorted(games, key=lambda g: -g["pts"])[:top]
+    for g in games:
+        g["line"] = stat_line(week_stats(lg, g["week"]).get(g["pid"], {}), lg.scoring, g["pos"])
+    return (games, sorted(bench_, key=lambda b: -b["gap"])[:top])
 
 
 def season_summary(lg):
