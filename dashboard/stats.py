@@ -646,31 +646,51 @@ def stat_line(st, scoring, pos):
     return out
 
 
+def _right_calls(lg, m):
+    """Lineup spots in matchup m filled with a player from the best possible lineup (ties go to the player started)."""
+    pp = {p: v for p, v in (m.get("players_points") or {}).items() if lg.pos_of(p)}
+    starters = [p for p in m["starters"] if p != "0"]
+    avail = sorted(pp.items(), key=lambda kv: (-kv[1], kv[0] not in starters))
+    used = []
+    for sl in sorted(lg.slots, key=lambda sl: sl in FLEX):
+        ok = FLEX.get(sl, (sl,))
+        for pid, _ in avail:
+            if pid not in used and lg.pos_of(pid) in ok:
+                used.append(pid)
+                break
+    return sum(1 for p in starters if p in used)
+
+
+def perfect_lineup(lg, m):
+    return _right_calls(lg, m) == len(lg.slots)
+
+
 def start_sit(lg):
-    """{owner: [right calls, lineup spots, perfect weeks, weeks]} over the regular season. A lineup spot is a right call when
-    the player started there belongs in the best possible lineup from that week's roster (ties go to the player started);
-    an empty spot is a wrong call."""
+    """{owner: [right calls, lineup spots, perfect weeks, weeks, perfect playoff games, playoff games]}. A lineup spot is a
+    right call when the player started there belongs in the best possible lineup from that week's roster (ties go to the
+    player started); an empty spot is a wrong call. The first four cover the regular season; the last two every playoff
+    game of a finished season, winners bracket, toilet bowl and placement games alike."""
     out = {}
     for w in lg.weeks:
         for m in lg.matchups[w]:
-            pp = m.get("players_points") or {}
-            starters = [p for p in m["starters"] if p != "0"]
-            pp = {p: v for p, v in pp.items() if lg.pos_of(p)}
-            # best lineup, with ties broken toward the players actually started
-            avail = sorted(pp.items(), key=lambda kv: (-kv[1], kv[0] not in starters))
-            used = []
-            for sl in sorted(lg.slots, key=lambda sl: sl in FLEX):
-                ok = FLEX.get(sl, (sl,))
-                for pid, _ in avail:
-                    if pid not in used and lg.pos_of(pid) in ok:
-                        used.append(pid)
-                        break
-            right = sum(1 for p in starters if p in used)
-            c = out.setdefault(lg.owner[m["roster_id"]], [0, 0, 0, 0])
+            right = _right_calls(lg, m)
+            c = out.setdefault(lg.owner[m["roster_id"]], [0, 0, 0, 0, 0, 0])
             c[0] += right
             c[1] += len(lg.slots)
             c[2] += right == len(lg.slots)
             c[3] += 1
+    if lg.complete and lg.playoff_start:
+        played = collections.defaultdict(set)  # week -> rosters with a playoff game
+        for kind in ("winners_bracket", "losers_bracket"):
+            for g in winprob._fetch(f"https://api.sleeper.app/v1/league/{lg.id}/{kind}") or []:
+                if g.get("t1") and g.get("t2"):
+                    played[lg.playoff_start + g["r"] - 1] |= {g["t1"], g["t2"]}
+        for w, teams in sorted(played.items()):
+            for m in lg.client.matchups(lg.id, w):
+                if m["roster_id"] in teams:
+                    c = out.setdefault(lg.owner[m["roster_id"]], [0, 0, 0, 0, 0, 0])
+                    c[4] += _right_calls(lg, m) == len(lg.slots)
+                    c[5] += 1
     return out
 
 

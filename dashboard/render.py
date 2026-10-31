@@ -1087,7 +1087,7 @@ def awards_tiles(aw, week):
     spec = [("upset", "Upset of the week", lambda v: f"{v:.0%}"), ("luckiest", "Luckiest win", lambda v: f"{v:.2f}"),
             ("unluckiest", "Unluckiest loss", lambda v: f"{v:.2f}"), ("best_call", "Best lineup call", lambda v: f"{v:.0%}"),
             ("worst_call", "Worst lineup call", lambda v: f"−{v:.1f}"), ("player", "Player of the week", lambda v: f"{v:.1f}"),
-            ("bench", "Bench disaster", lambda v: f"{v:.1f}")]
+            ("bench", "Bench disaster", lambda v: f"{v:.1f}"), ("perfect", "Perfect lineups", lambda v: f"{v}")]
     tiles = []
     for k, label, f in spec:
         if k not in aw:
@@ -1096,7 +1096,8 @@ def awards_tiles(aw, week):
         tiles.append(f'<div class="panel tile"><div class="k">{label}</div><div class="v">{f(v)}</div>'
                      f'<div class="s"><b style="color:var(--ink)">{esc(who)}</b> {esc(why)}</div></div>')
     return (f'<div class="tiles">{"".join(tiles)}</div><p class="note">Week {week}. Best lineup call = highest share of its best possible lineup; '
-            'upset = the winner with the lowest pregame win probability.</p>')
+            'upset = the winner with the lowest pregame win probability. Perfect lineup = every starter belonged in the best possible '
+            'lineup from that week’s roster.</p>')
 
 
 def preview_cards(games, week):
@@ -1825,10 +1826,10 @@ def alltime_sections(sums):
                         partners[o][p] += 1
     faab = collections.defaultdict(collections.Counter)
     bench_ = collections.Counter()
-    ss = collections.defaultdict(lambda: [0, 0, 0, 0])
+    ss = collections.defaultdict(lambda: [0, 0, 0, 0, 0, 0])
     for x in sums:
         for o, v in x.get("startsit", {}).items():
-            ss[o] = [a + b for a, b in zip(ss[o], v)]
+            ss[o] = [a + b for a, b in zip(ss[o], list(v) + [0] * (6 - len(v)))]
         for o, f in x.get("faab", {}).items():
             faab[o].update({k: v for k, v in f.items() if isinstance(v, (int, float))})
         for o, v in x.get("bench", {}).items():
@@ -1845,7 +1846,9 @@ def alltime_sections(sums):
                     f'<td class="n">{f["bids"]}</td><td class="n">{f["won"]}</td><td class="n" data-v="{f["spent"]}">${f["spent"]}</td><td class="n neg" data-v="{f["over"]}">${f["over"]}</td>'
                     f'<td class="n team" data-v="{bench_[o]:.1f}">{bench_[o]:,.0f}</td><td class="n muted" data-v="{bench_[o] / nseas:.1f}">{bench_[o] / nseas:,.0f}</td>'
                     + (f'<td class="n team" data-v="{ss[o][0] / ss[o][1]:.4f}">{ss[o][0] / ss[o][1]:.1%}</td>'
-                       f'<td class="n" data-v="{ss[o][2] / ss[o][3]:.4f}">{ss[o][2]} <span class="muted">of {ss[o][3]}</span></td>' if ss[o][1] else
+                       f'<td class="n" data-v="{ss[o][2] + ss[o][4]}" title="{ss[o][2]} of {ss[o][3]} regular season, {ss[o][4]} of {ss[o][5]} playoffs">'
+                       f'{ss[o][2] + ss[o][4]} <span class="muted">of {ss[o][3] + ss[o][5]}</span>'
+                       + (f'<div class="muted" style="font-size:12px">{ss[o][4]} in playoffs</div>' if ss[o][4] else '') + '</td>' if ss[o][1] else
                        '<td class="n muted" data-v="0">—</td><td class="n muted" data-v="0">—</td>') + '</tr>')
     tendencies = (f'<div class="panel scroll"><table class="sortable"><thead><tr><th>Manager</th><th class="n">Trades</th><th class="n">Trade net</th><th>Favorite trade partner</th>'
                   f'<th class="n">Waiver bids</th><th class="n">Won</th><th class="n">FAAB spent</th><th class="n">Overbid</th>'
@@ -1854,7 +1857,8 @@ def alltime_sections(sums):
                   '(the whole bid when nobody else claimed the player). Trade net = points the players a manager got scored for the rest of that season, minus what the other side got, over every trade. '
                   'Bench points = the best possible lineup minus the one actually started, every week. Start/sit = the share of lineup spots filled '
                   'with a player who belongs in that week’s best possible lineup (empty spots count as misses; ties go to the player started), '
-                  'regular season. Perfect lineups = weeks with every spot right. Click a column header to sort.</p>')
+                  'regular season. Perfect lineups = games with every spot right, out of every game played: regular season plus all playoff '
+                  'games (winners bracket, toilet bowl and placement games). Click a column header to sort.</p>')
 
     # waiver overbids, every season
     ob = collections.defaultdict(lambda: {"bids": 0, "won": 0, "spent": 0, "over": 0, "fa": 0, "moves": 0, "biggest": None})
