@@ -119,6 +119,7 @@ nav.seasons a[aria-current="page"]{color:var(--a);border-bottom-color:var(--a)}
 .xall:hover{border-color:var(--a);color:var(--a)}
 .xall-bar{display:flex;justify-content:flex-end;margin-bottom:8px}
 .snapping .xall{display:none}
+h3.h3-xall{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}h3.h3-xall .xall{margin-left:auto}
 @media (max-width:520px){.snapbtn{font-size:11.5px;padding:3px 9px}}
 section[id]>h2{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
 .snapbtn{margin-left:auto;flex:none;font:600 12px var(--body);letter-spacing:0;text-transform:none;color:var(--ink2);background:var(--surface);
@@ -911,7 +912,9 @@ document.querySelectorAll('.trend-card').forEach(function (card) {
     rows.forEach(function (r) { r.addEventListener('click', function () { setTimeout(sync, 0); }); });
     sync();
     var box = t.closest('.panel') || t.parentNode, bar = box.querySelector('.hl-bar');
+    var h3 = box.firstElementChild;
     if (bar && bar.closest('.panel') === box) bar.appendChild(b);
+    else if (h3 && h3.tagName === 'H3' && box.classList.contains('panel')) { h3.classList.add('h3-xall'); h3.appendChild(b); }
     else { var w = document.createElement('div'); w.className = 'xall-bar'; w.appendChild(b); box.insertBefore(w, t.closest('.panel') === box ? box.firstChild : t); }
   });
 })();
@@ -1680,14 +1683,30 @@ def alltime_sections(sums):
     worst_pf = sorted(seasons_, key=lambda t: t[2]["pf"])[:5]
     season_fmt = lambda t: (f'<td>{who(t[1], t[2]["team"])}<div class="muted" style="font-size:12px">{t[0]} · {rec_s(t[2]["wins"], t[2]["losses"], t[2]["ties"])}'
                             f' · finished {_ordinal(t[2]["finish"])}</div></td><td class="n team">{t[2]["pf"]:,.1f}</td>')
+    lineups = {(x["season"], k): v for x in sums for k, v in x.get("lineups", {}).items()}
+    def score_lst(title, items, cls, key):
+        trs = []
+        for i, z in enumerate(items, 1):
+            lu = lineups.get((z[1], f"{z[2]}:{z[3]}"))
+            head = (f'<td class="muted">{i}</td><td>{"<span class=chev aria-hidden=true>▸</span> " if lu else ""}{who(z[3])}'
+                    f'<div class="muted" style="font-size:12px">{wk(z[1], z[2], z[4])}</div></td><td class="n team">{z[0]:.2f}</td>')
+            if not lu:
+                trs.append(f'<tr>{head}</tr>')
+                continue
+            det = "".join(f'<tr><td class="muted">{esc(sl)}</td><td>' + (f'<b>{esc(n)}</b> <span class="muted">{p_ or ""}</span>' if n else '<span class="neg">empty slot</span>')
+                          + f'</td><td class="n team">{v:.1f}</td></tr>' for sl, n, p_, v in lu["starters"])
+            det += "".join(f'<tr><td class="muted">BN</td><td><b>{esc(n)}</b> <span class="muted">{p_ or ""}</span></td>'
+                           f'<td class="n muted">{v:.1f}</td></tr>' for n, p_, v in lu["bench"])
+            trs.append(f'<tr class="xrow" tabindex="0" role="button" aria-expanded="false" aria-controls="{key}-{i}">{head}</tr>'
+                       f'<tr class="xdetail" id="{key}-{i}" hidden><td colspan="3"><table class="picks">{det}</table></td></tr>')
+        return f'<div class="panel"><h3 class="{cls}">{title}</h3><table class="expand">{"".join(trs)}</table></div>'
     record_book = (
         '<div class="grid2">'
-        + lst("Highest scores", hi, lambda z: f'<td>{who(z[3])}<div class="muted" style="font-size:12px">{wk(z[1], z[2], z[4])}</div></td><td class="n team">{z[0]:.2f}</td>', "pos")
-        + lst("Lowest scores", lo, lambda z: f'<td>{who(z[3])}<div class="muted" style="font-size:12px">{wk(z[1], z[2], z[4])}</div></td><td class="n team">{z[0]:.2f}</td>', "neg")
+        + score_lst("Highest scores", hi, "pos", "rb-hi") + score_lst("Lowest scores", lo, "neg", "rb-lo")
         + lst("Biggest blowouts", blow, game_fmt) + lst("Closest games", close, game_fmt)
         + lst("Most points in a season", best_pf, season_fmt, "pos") + lst("Fewest points in a season", worst_pf, season_fmt, "neg")
         + '</div><p class="note">Regular season and playoff games. Season totals are regular season, finished seasons only. '
-          'Names are each manager’s current team.</p>')
+          'Names are each manager’s current team. Click a high or low score for that week’s full roster: starters, then the bench.</p>')
 
     # all-time luck (regular season)
     exp = collections.Counter()
