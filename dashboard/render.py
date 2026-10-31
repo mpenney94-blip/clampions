@@ -119,7 +119,9 @@ nav.seasons a[aria-current="page"]{color:var(--a);border-bottom-color:var(--a)}
 .xall:hover{border-color:var(--a);color:var(--a)}
 .xall-bar{display:flex;justify-content:flex-end;margin-bottom:8px}
 .snapping .xall{display:none}
-.snapbtn{float:right;margin-top:6px;font:600 12px var(--body);letter-spacing:0;text-transform:none;color:var(--ink2);background:var(--surface);
+@media (max-width:520px){.snapbtn{font-size:11.5px;padding:3px 9px}}
+section[id]>h2{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
+.snapbtn{margin-left:auto;flex:none;font:600 12px var(--body);letter-spacing:0;text-transform:none;color:var(--ink2);background:var(--surface);
  border:1px solid var(--rule);border-radius:999px;padding:4px 10px;cursor:pointer}
 .snapbtn:hover{border-color:var(--a);color:var(--a)}
 .snapping .scroll,.snapping .tippanel{overflow:visible!important}
