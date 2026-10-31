@@ -346,7 +346,7 @@ def alltime_page(name, tabs, sums):
         ("at-rivalries", "Rivalries", "Every manager against every other manager.", ["head-to-head", "rivalries", "streaks"]),
         ("at-records", "Records", "The best and worst single games and seasons, and who the schedule has favored.", ["record-book", "luck"]),
         ("at-moves", "Roster moves", "Keepers, drafts, trades and the waiver wire across every season.",
-         ["keepers", "draft-history", "alltime-trades", "tendencies", "alltime-overbids", "moves"]),
+         ["keepers", "draft-history", "alltime-trades", "tendencies", "alltime-overbids", "loyalty", "moves"]),
     ]
     groups = [(gid, g, blurb, [k for k in keys if k in S]) for gid, g, blurb, keys in groups]
     placed = {k for *_, keys in groups for k in keys}
