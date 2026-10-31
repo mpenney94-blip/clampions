@@ -188,16 +188,8 @@ def awards(lg, w, wp=None):
     if bench:
         out["bench"] = (bench[0], bench[1], f"sat on {bench[2]}’s bench")
     perfect = [lg.team[m["roster_id"]] for m in ms if perfect_lineup(lg, m)]
-    so_far = collections.Counter({t: 0 for t in lg.team.values()})
-    for wk in lg.weeks:
-        if wk <= w:
-            so_far.update(lg.team[m["roster_id"]] for m in lg.matchups[wk] if perfect_lineup(lg, m))
-    top = max(so_far.values())
-    leaders = sorted(t for t, n in so_far.items() if n == top)
-    lead = (f"Season leader{'s' if len(leaders) > 1 else ''}: {', '.join(leaders)} ({top})" if top and len(leaders) <= 3
-            else f"{len(leaders)} teams tied with {top} this season" if top else "Nobody has had one yet this season")
-    did = "each set one" if len(perfect) > 1 else "set one"
-    out["perfect"] = (", ".join(perfect) if perfect else "Nobody", len(perfect), f"{did}. {lead}.")
+    out["perfect"] = (", ".join(perfect) if perfect else "Nobody", len(perfect),
+                      "each set one" if len(perfect) > 1 else "set one")
     if wp:
         ups = []
         for mm in wp["matchups"]:
