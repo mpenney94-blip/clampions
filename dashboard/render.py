@@ -1973,21 +1973,29 @@ def alltime_sections(sums):
         foot = (f'<tr><td class="muted">Total</td><td class="muted">{note}</td>'
                 f'<td class="n team">{tot:.2f}</td></tr>')
         return f'<div class="xpin"><table class="picks">{body}{foot}</table></div>'
-    bg_trs = "".join(
-        f'<tr class="xrow" tabindex="0" role="button" aria-expanded="false" aria-controls="bg-{i}"><td class="muted rank">{i}</td>'
-        f'<td style="white-space:nowrap"><span class="chev" aria-hidden="true">▸</span> <b>{esc(g["player"])}</b> <span class="muted">{g["pos"] or ""}</span></td>'
-        f'<td class="n team" data-v="{g["pts"]}">{g["pts"]:.2f}</td><td>{who(g["owner"], g["team"])}</td>'
-        f'<td data-v="{wsort(x, g)}" style="white-space:nowrap">{when(x, g)}</td>'
-        f'<td data-v="{g["score"] - (g["opp"] if g["opp"] is not None else g["score"]):.2f}" style="white-space:nowrap">{res(g["score"], g["opp"])}</td>'
-        f'<td class="n" data-v="{g["pts"] / g["score"] if g["score"] else 0:.4f}">{g["pts"] / g["score"] if g["score"] else 0:.0%}</td></tr>'
-        f'<tr class="xdetail" id="bg-{i}" hidden><td colspan="7">{line_html(g)}</td></tr>'
-        for i, (x, g) in enumerate(bg, 1))
-    big_games_html = (f'<div class="panel scroll"><table class="sortable expand"><thead><tr><th>#</th><th>Player</th><th class="n">Points</th>'
-                      f'<th>Team</th><th>When</th><th>Result</th><th class="n">Share of team score</th></tr></thead><tbody>{bg_trs}</tbody></table></div>'
-                      '<p class="note">The highest single-game scores by a player in a starting lineup, since 2023. Regular season and '
+    def games_table(items, key, share):
+        trs = "".join(
+            f'<tr class="xrow" tabindex="0" role="button" aria-expanded="false" aria-controls="{key}-{i}"><td class="muted rank">{i}</td>'
+            f'<td style="white-space:nowrap"><span class="chev" aria-hidden="true">▸</span> <b>{esc(g["player"])}</b> <span class="muted">{g["pos"] or ""}</span></td>'
+            f'<td class="n team{"" if share else " neg"}" data-v="{g["pts"]}">{g["pts"]:.2f}</td><td>{who(g["owner"], g["team"])}</td>'
+            f'<td data-v="{wsort(x, g)}" style="white-space:nowrap">{when(x, g)}</td>'
+            f'<td data-v="{g["score"] - (g["opp"] if g["opp"] is not None else g["score"]):.2f}" style="white-space:nowrap">{res(g["score"], g["opp"])}</td>'
+            + (f'<td class="n" data-v="{g["pts"] / g["score"] if g["score"] else 0:.4f}">{g["pts"] / g["score"] if g["score"] else 0:.0%}</td>' if share else '')
+            + f'</tr><tr class="xdetail" id="{key}-{i}" hidden><td colspan="{7 if share else 6}">{line_html(g)}</td></tr>'
+            for i, (x, g) in enumerate(items, 1))
+        return (f'<div class="panel scroll"><table class="sortable expand"><thead><tr><th>#</th><th>Player</th><th class="n">Points</th>'
+                f'<th>Team</th><th>When</th><th>Result</th>{"<th class=n>Share of team score</th>" if share else ""}</tr></thead>'
+                f'<tbody>{trs}</tbody></table></div>')
+    big_games_html = (games_table(bg, "bg", True)
+                      + '<p class="note">The highest single-game scores by a player in a starting lineup, since 2023. Regular season and '
                       'winners-bracket playoff games (not the 5th-place game). Team = that season’s team name. Share = his points as a share of '
                       'the team’s score that week. Click a player for his stat line and what each part was worth under league scoring. '
                       'Click a column header to sort.</p>')
+    wg = sorted(((x["season"], g) for x in sums for g in x.get("worst_games", [])), key=lambda t: t[1]["pts"])[:10]
+    worst_games_html = (games_table(wg, "wg", False)
+                        + '<p class="note">The lowest single-game scores by a player in a starting lineup who actually played, since 2023 '
+                          '(starters who sat out with an injury or a bye don’t count). Regular season and winners-bracket playoff games. Click a player for his '
+                          'stat line and where the points went. Click a column header to sort.</p>')
     bw = sorted(((x["season"], b) for x in sums for b in x.get("bench_weeks", [])), key=lambda t: -t[1]["gap"])[:25]
     def flipped(b):
         return b["opp"] is not None and b["score"] < b["opp"] < b["best"]
@@ -2010,7 +2018,7 @@ def alltime_sections(sums):
     return [("alltime-standings", "All-time standings", standings), ("head-to-head", "Head to head", headtohead),
             ("finishes", "Where everyone finished", finishes), ("champions", "Champions and last places", champs),
             ("playoff-records", "Playoff records", playoffs_html), ("record-book", "Record book", record_book),
-            ("big-games", "Best single-game performances", big_games_html), ("bench-disasters", "Biggest bench disasters", bench_html),
+            ("big-games", "Best single-game performances", big_games_html), ("worst-games", "Worst single-game performances", worst_games_html), ("bench-disasters", "Biggest bench disasters", bench_html),
             ("luck", "All-time luck", luck_html), ("streaks", "Streaks", streak_html), ("keepers", "Keepers", keep_html),
             ("draft-history", "Draft history", draft_html), ("alltime-trades", "Most lopsided trades", trade_html),
             ("tendencies", "Manager tendencies", tendencies), ("alltime-overbids", "Waiver overbids", overbids),

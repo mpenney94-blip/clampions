@@ -634,11 +634,11 @@ def stat_line(st, scoring, pos):
                           two("rec_2pt")) if n("rec") or n("rec_tgt") else "",
         "Returns": join(f"{n('kr_yd')} kick return yds" if n("kr_yd") else "", f"{n('pr_yd')} punt return yds" if n("pr_yd") else "",
                         f"{n('st_td') or n('kr_td') + n('pr_td')} return TD" if n("st_td") or n("kr_td") or n("pr_td") else ""),
-        "Kicking": join(f"{n('fgm')}/{n('fga')} FG" + (f" (long {n('fgm_lng')})" if n("fgm") else ""), f"{n('xpm')}/{n('xpa')} XP" if n("xpa") else "")
+        "Kicking": join((f"{n('fgm')}/{n('fga')} FG" + (f" (long {n('fgm_lng')})" if n("fgm") else "")) if n("fga") else "", f"{n('xpm')}/{n('xpa')} XP" if n("xpa") else "")
                    if n("fga") or n("xpa") else "",
         "Fumbles": f"{n('fum_lost')} lost" if n("fum_lost") else "",
         "Defense": join(f"{n('pts_allow')} pts allowed", f"{n('yds_allow')} yds allowed" if "yds_allow" in st else "",
-                        f"{st['sack']:g} sacks" if st.get("sack") else "", f"{n('int')} INT" if n("int") else "",
+                        f"{st['sack']:g} sack{'' if st['sack'] == 1 else 's'}" if st.get("sack") else "", f"{n('int')} INT" if n("int") else "",
                         f"{n('fum_rec')} fumble rec" if n("fum_rec") else "", f"{n('def_td')} TD" if n("def_td") else "",
                         f"{n('safe')} safety" if n("safe") else "", f"{n('blk_kick')} blocked kick" if n("blk_kick") else "") if pos == "DEF" else "",
     }
@@ -660,7 +660,7 @@ def big_days(lg, top=20):
             opp = [x for x in by_mid[m.get("matchup_id")] if x is not m and m.get("matchup_id")]
             them = (opp[0]["points"] or 0.0) if opp else None
             for pid, v in zip(m["starters"], m.get("starters_points") or []):
-                if pid != "0" and v:
+                if pid != "0" and v is not None:
                     games.append({"week": w, "playoff": pl, "owner": own[r], "team": lg.team[r], "pid": pid, "player": lg.name_of(pid),
                                   "pos": lg.pos_of(pid), "pts": round(v, 2), "score": round(me, 2),
                                   "opp": round(them, 2) if them is not None else None})
@@ -673,10 +673,13 @@ def big_days(lg, top=20):
             bench_.append({"week": w, "playoff": pl, "owner": own[r], "team": lg.team[r], "gap": round(gap, 2), "score": round(me, 2),
                            "best": round(opt, 2), "opp": round(them, 2) if them is not None else None,
                            "benched": [[lg.name_of(p), lg.pos_of(p), round(pp[p], 2)] for p in benched[:3]]})
+    played = lambda g: g["pid"].isalpha() or (week_stats(lg, g["week"]).get(g["pid"]) or {}).get("gp")  # not a starter who sat out
+    worst = sorted((g for g in games if g["pts"] <= 2), key=lambda g: g["pts"])
+    worst = [g for g in worst if played(g)][:10]
     games = sorted(games, key=lambda g: -g["pts"])[:top]
-    for g in games:
+    for g in games + worst:
         g["line"] = stat_line(week_stats(lg, g["week"]).get(g["pid"], {}), lg.scoring, g["pos"])
-    return (games, sorted(bench_, key=lambda b: -b["gap"])[:top])
+    return (games, sorted(bench_, key=lambda b: -b["gap"])[:top], worst)
 
 
 def season_summary(lg):
@@ -737,11 +740,11 @@ def season_summary(lg):
                 sc = {x["roster_id"]: x["points"] or 0.0 for x in lg.client.matchups(lg.id, w)}
                 games.append([w, own[a], round(sc.get(a, 0), 2), own[b], round(sc.get(b, 0), 2), True])
     pickups_ = sorted(pickups(lg), key=lambda a: -a["total"])[:15]
-    big_games, bench_weeks = big_days(lg)
+    big_games, bench_weeks, worst_games = big_days(lg)
     return {
         "season": lg.season, "complete": lg.complete, "weeks": len(lg.weeks), "playoff_teams": lg.playoff_teams, "teams": teams,
         "keepers": keepers, "trades": trade_rows, "games": games, "rostered": rostered,
-        "big_games": big_games, "bench_weeks": bench_weeks, "lineups": score_lineups(lg),
+        "big_games": big_games, "bench_weeks": bench_weeks, "worst_games": worst_games, "lineups": score_lineups(lg),
         "draft": [{"owner": by_name.get(z["team"]), "team": z["team"], "round": z["round"], "pick": z["pick"], "player": z["player"],
                    "pos": z["pos"], "pts": round(z["pts"], 1), "value": round(z["value"], 1), "keeper": z["keeper"]} for z in draft(lg)],
         "faab": {by_name[x["team"]]: {k: x[k] for k in ("bids", "won", "spent", "over", "fa", "moves", "biggest")} for x in waiver_bids(lg)},
