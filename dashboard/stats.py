@@ -283,7 +283,7 @@ def waiver_bids(lg):
             out[r]["bids"] += 1
             out[r]["claims"].append(c)
     for x in out.values():
-        x["moves"] = x["bids"] + x["fa"]
+        x["moves"] = x["won"] + x["fa"]  # players actually added: waiver claims won plus free agent pickups
         x["claims"].sort(key=lambda c: (c["week"], -c["bid"]))
     return sorted(out.values(), key=lambda x: -x["over"])
 
