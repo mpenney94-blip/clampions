@@ -175,13 +175,15 @@ def _optimal(lg, pp):
 
 
 def bench(lg):
-    out = {r: {"team": n, "lost": 0.0, "flips": [], "worst": None} for r, n in lg.team.items()}
+    out = {r: {"team": n, "lost": 0.0, "flips": [], "worst": None, "perfect": []} for r, n in lg.team.items()}
     for w in lg.weeks:
         sc, opp = lg.scores(w), lg.opponent(w)
         for m in lg.matchups[w]:
             r = m["roster_id"]
             opt, used = _optimal(lg, m.get("players_points") or {})
             out[r]["lost"] += opt - sc[r]
+            if perfect_lineup(lg, m):
+                out[r]["perfect"].append(w)
             if r in opp and sc[r] < sc[opp[r]] < opt:
                 out[r]["flips"].append(w)
             for pid in used:
