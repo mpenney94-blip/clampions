@@ -593,11 +593,19 @@ def season_summary(lg):
     keepers = [{"player": z["player"], "pid": z["pid"], "pos": z["pos"], "owner": by_name.get(z["team"]), "team": z["team"], "round": z["round"],
                 "pick": z["pick"], "pts": round(z["pts"], 1), "value": round(z["value"], 1)} for z in draft(lg) if z["keeper"]]
     held = collections.defaultdict(collections.Counter)  # owner -> player -> regular-season weeks on the roster
+    started = collections.defaultdict(collections.Counter)  # owner -> player -> weeks in the starting lineup
+    start_pts = collections.defaultdict(collections.Counter)  # owner -> player -> points scored while starting
     for w in lg.weeks:
         for m in lg.matchups[w]:
+            o = own[m["roster_id"]]
             for p in m.get("players") or []:
-                held[own[m["roster_id"]]][p] += 1
-    rostered = {o: {p: [n, lg.name_of(p), lg.pos_of(p)] for p, n in c.items()} for o, c in held.items()}
+                held[o][p] += 1
+            for p, v in zip(m["starters"], m.get("starters_points") or []):
+                if p != "0":
+                    started[o][p] += 1
+                    start_pts[o][p] += v or 0
+    rostered = {o: {p: [n, lg.name_of(p), lg.pos_of(p), started[o][p], round(start_pts[o][p], 2)] for p, n in c.items()}
+                for o, c in held.items()}
     trade_rows = []
     for t in trades(lg):
         sides = [{"owner": by_name.get(sd["team"]), "team": sd["team"], "total": round(sd["total"], 1), "picks": sd["picks"],

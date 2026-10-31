@@ -1763,15 +1763,19 @@ def alltime_sections(sums):
 
     # loyalty: players a manager has kept around, season after season
     possible = collections.Counter()  # owner -> regular-season weeks he's been in the league
-    held = collections.defaultdict(lambda: collections.defaultdict(lambda: {"weeks": 0, "seasons": [], "name": "", "pos": ""}))
+    held = collections.defaultdict(lambda: collections.defaultdict(lambda: {"weeks": 0, "seasons": [], "name": "", "pos": "", "started": 0, "pts": 0.0}))
     kept = collections.defaultdict(set)  # (owner, player) -> seasons kept
     for x in sums:
         for o in x["teams"]:
             possible[o] += x["weeks"]
         for o, ps in x.get("rostered", {}).items():
-            for pid, (n, nm, pos) in ps.items():
+            for pid, row in ps.items():
+                n, nm, pos = row[:3]
                 h = held[o][pid]
                 h["weeks"] += n
+                if len(row) > 4:  # weeks started and points while starting (older summaries don't have them)
+                    h["started"] += row[3]
+                    h["pts"] += row[4]
                 h["seasons"].append(x["season"])
                 h["name"], h["pos"] = nm, pos
         for k in x["keepers"]:
@@ -1795,6 +1799,7 @@ def alltime_sections(sums):
             return "".join(f' <span class="chip medal m1" title="kept in {s_}">★ kept {s_}</span>' for s_ in ss)
         det = "".join(f'<tr><td><b>{esc(h["name"])}</b> <span class="muted">{h["pos"] or ""}</span>{tag(pid)}</td>'
                       f'<td class="n team">{h["weeks"]}/{possible[o]}</td><td class="n muted">{h["weeks"] / possible[o]:.0%}</td>'
+                      f'<td class="n">{h["started"]}</td><td class="n team">{h["pts"]:.1f}</td>'
                       f'<td class="muted">{", ".join(h["seasons"])}</td></tr>' for pid, h in top) or \
             '<tr><td class="muted">Nobody has stuck around for two seasons yet.</td></tr>'
         ltrs.append(f'<tr class="xrow" tabindex="0" role="button" aria-expanded="false" aria-controls="loy-{i}" '
@@ -1803,7 +1808,8 @@ def alltime_sections(sums):
                     f'<td class="n team">{len(multi)}</td><td class="n">{share:.0%}</td><td class="n">{nkept}</td>'
                     f'<td style="white-space:nowrap">{long_txt}</td></tr>'
                     f'<tr class="xdetail" id="loy-{i}" hidden><td colspan="6"><table class="picks"><tr><td class="muted">Player</td>'
-                    f'<td class="n muted">Weeks on roster</td><td class="n muted">Share</td><td class="muted">Seasons</td></tr>{det}</table></td></tr>')
+                    f'<td class="n muted">Weeks on roster</td><td class="n muted">Share</td><td class="n muted">Weeks started</td>'
+                    f'<td class="n muted">Pts as a starter</td><td class="muted">Seasons</td></tr>{det}</table></td></tr>')
     lcontrols = _sort_controls("loyal", [("n", "Repeat players", "Most players carried across seasons first"),
                                          ("share", "Share of roster weeks", "Most roster time from repeat players first"),
                                          ("long", "Longest tenure", "Longest-held player first"),
@@ -1821,7 +1827,8 @@ def alltime_sections(sums):
                 f'<th>Manager</th><th class="n">Weeks on roster</th><th>Seasons</th></tr></thead><tbody>{btrs}</tbody></table></div>'
                 '<p class="note">Regular-season weeks a player spent on a manager’s roster, starting or on the bench, out of all the regular-season weeks '
                 'that manager has played since 2023 (this season so far included). Repeat players = on the same manager’s roster in at least two '
-                'seasons; team defenses count too. ★ marks the seasons a player was a keeper for that manager. Click a manager for his players.</p>')
+                'seasons; team defenses count too. ★ marks the seasons a player was a keeper for that manager. Weeks started and points as a starter count only weeks he was in that '
+                'manager’s starting lineup. Click a manager for his players.</p>')
 
     return [("alltime-standings", "All-time standings", standings), ("head-to-head", "Head to head", headtohead),
             ("finishes", "Where everyone finished", finishes), ("champions", "Champions and last places", champs),
