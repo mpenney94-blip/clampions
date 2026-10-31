@@ -115,6 +115,10 @@ nav.seasons a{font:600 15px var(--display);letter-spacing:.06em;text-transform:u
 nav.seasons a:hover{color:var(--ink)}
 nav.seasons a[aria-current="page"]{color:var(--a);border-bottom-color:var(--a)}
 :root{--t1:rgba(42,120,214,.22);--t2:rgba(235,104,52,.22);--t3:rgba(27,175,122,.22);--t4:rgba(237,161,0,.24);--t5:rgba(232,123,164,.24);--t6:rgba(0,131,0,.22)}
+.xall{margin-left:auto;font:600 12.5px var(--body);color:var(--ink2);background:var(--surface);border:1px solid var(--rule);border-radius:999px;padding:4px 10px;cursor:pointer}
+.xall:hover{border-color:var(--a);color:var(--a)}
+.xall-bar{display:flex;justify-content:flex-end;margin-bottom:8px}
+.snapping .xall{display:none}
 .snapbtn{float:right;margin-top:6px;font:600 12px var(--body);letter-spacing:0;text-transform:none;color:var(--ink2);background:var(--surface);
  border:1px solid var(--rule);border-radius:999px;padding:4px 10px;cursor:pointer}
 .snapbtn:hover{border-color:var(--a);color:var(--a)}
@@ -888,6 +892,26 @@ document.querySelectorAll('.trend-card').forEach(function (card) {
     });
   }
   document.querySelectorAll('.sortbars table, table.sortable').forEach(setup);
+})();
+// Expand all / collapse all for every table with dropdown rows.
+(function () {
+  document.querySelectorAll('table.expand').forEach(function (t) {
+    if (t.closest('tr.xdetail')) return;
+    var rows = Array.prototype.slice.call(t.querySelectorAll('tr.xrow')).filter(function (r) { return r.closest('table') === t; });
+    if (rows.length < 2) return;
+    var b = document.createElement('button'); b.type = 'button'; b.className = 'xall';
+    function sync() { var open = rows.every(function (r) { return r.getAttribute('aria-expanded') === 'true'; }); b.textContent = open ? '▾ Collapse all' : '▸ Expand all'; return open; }
+    b.addEventListener('click', function () {
+      var open = !sync();
+      rows.forEach(function (r) { r.setAttribute('aria-expanded', open); var d = document.getElementById(r.getAttribute('aria-controls')); if (d) d.hidden = !open; });
+      sync();
+    });
+    rows.forEach(function (r) { r.addEventListener('click', function () { setTimeout(sync, 0); }); });
+    sync();
+    var box = t.closest('.panel') || t.parentNode, bar = box.querySelector('.hl-bar');
+    if (bar && bar.closest('.panel') === box) bar.appendChild(b);
+    else { var w = document.createElement('div'); w.className = 'xall-bar'; w.appendChild(b); box.insertBefore(w, t.closest('.panel') === box ? box.firstChild : t); }
+  });
 })();
 // Save image: a button on every section heading turns the section, exactly as it looks now (sort, expanded rows,
 // toggles), into a PNG. On a phone the share sheet saves it to Photos; pressing and holding the preview works too.
