@@ -1930,9 +1930,53 @@ def alltime_sections(sums):
                 'seasons; team defenses count too. ★ marks the seasons a player was a keeper for that manager. Weeks started and points as a starter count only weeks he was in that '
                 'manager’s starting lineup. Click a manager for his players.</p>')
 
+    # best single-game player scores and worst bench weeks
+    def res(me, them):
+        if them is None:
+            return '<span class="muted">–</span>'
+        d = me - them
+        return (f'<span class="pos">W</span> <span class="muted">by {d:.1f}</span>' if d > 0 else
+                f'<span class="neg">L</span> <span class="muted">by {-d:.1f}</span>' if d < 0 else '<span class="muted">T</span>')
+    def when(x, g):
+        return f'{x} wk {g["week"]}{" (playoffs)" if g["playoff"] else ""}'
+    def wsort(x, g):
+        return int(x) * 100 + g["week"]
+    bg = sorted(((x["season"], g) for x in sums for g in x.get("big_games", [])), key=lambda t: -t[1]["pts"])[:25]
+    bg_trs = "".join(
+        f'<tr><td class="muted rank">{i}</td><td><b>{esc(g["player"])}</b> <span class="muted">{g["pos"] or ""}</span></td>'
+        f'<td class="n team" data-v="{g["pts"]}">{g["pts"]:.2f}</td><td>{who(g["owner"], g["team"])}</td>'
+        f'<td data-v="{wsort(x, g)}" style="white-space:nowrap">{when(x, g)}</td>'
+        f'<td data-v="{g["score"] - (g["opp"] if g["opp"] is not None else g["score"]):.2f}" style="white-space:nowrap">{res(g["score"], g["opp"])}</td>'
+        f'<td class="n" data-v="{g["pts"] / g["score"] if g["score"] else 0:.4f}">{g["pts"] / g["score"] if g["score"] else 0:.0%}</td></tr>'
+        for i, (x, g) in enumerate(bg, 1))
+    big_games_html = (f'<div class="panel scroll"><table class="sortable"><thead><tr><th>#</th><th>Player</th><th class="n">Points</th>'
+                      f'<th>Team</th><th>When</th><th>Result</th><th class="n">Share of team score</th></tr></thead><tbody>{bg_trs}</tbody></table></div>'
+                      '<p class="note">The highest single-game scores by a player in a starting lineup, since 2023. Regular season and '
+                      'winners-bracket playoff games (not the 5th-place game). Team = that season’s team name. Share = his points as a share of '
+                      'the team’s score that week. Click a column header to sort.</p>')
+    bw = sorted(((x["season"], b) for x in sums for b in x.get("bench_weeks", [])), key=lambda t: -t[1]["gap"])[:25]
+    def flipped(b):
+        return b["opp"] is not None and b["score"] < b["opp"] < b["best"]
+    bw_trs = "".join(
+        f'<tr><td class="muted rank">{i}</td><td>{who(b["owner"], b["team"])}</td><td data-v="{wsort(x, b)}" style="white-space:nowrap">{when(x, b)}</td>'
+        f'<td class="n team neg" data-v="{b["gap"]}">{b["gap"]:.2f}</td>'
+        f'<td class="n" data-v="{b["score"]}" style="white-space:nowrap">{b["score"]:.1f} <span class="muted">of {b["best"]:.1f}</span></td>'
+        f'<td data-v="{b["score"] - (b["opp"] if b["opp"] is not None else b["score"]):.2f}" style="white-space:nowrap">{res(b["score"], b["opp"])}'
+        + (' <span class="chip neg">cost the game</span>' if flipped(b) else '') + '</td>'
+        f'<td>{", ".join(f"<b>{esc(n)}</b> <span class=muted>{p_ or ''} {v:.1f}</span>" for n, p_, v in b["benched"])}</td></tr>'
+        for i, (x, b) in enumerate(bw, 1))
+    bench_html = (f'<div class="panel scroll"><table class="sortable"><thead><tr><th>#</th><th>Team</th><th>When</th>'
+                  f'<th class="n">Left on bench</th><th class="n">Scored</th><th>Result</th><th>Should have started</th></tr></thead>'
+                  f'<tbody>{bw_trs}</tbody></table></div>'
+                  '<p class="note">The weeks with the most points left on the bench: the best possible lineup from that week’s roster '
+                  'minus the lineup actually started. “Scored … of …” = actual score of the best possible. Cost the game = lost, but the best '
+                  'lineup would have won. Should have started = the bench players the best lineup would have used. Regular season and '
+                  'winners-bracket playoff games. Click a column header to sort.</p>')
+
     return [("alltime-standings", "All-time standings", standings), ("head-to-head", "Head to head", headtohead),
             ("finishes", "Where everyone finished", finishes), ("champions", "Champions and last places", champs),
             ("playoff-records", "Playoff records", playoffs_html), ("record-book", "Record book", record_book),
+            ("big-games", "Best single-game performances", big_games_html), ("bench-disasters", "Biggest bench disasters", bench_html),
             ("luck", "All-time luck", luck_html), ("streaks", "Streaks", streak_html), ("keepers", "Keepers", keep_html),
             ("draft-history", "Draft history", draft_html), ("alltime-trades", "Most lopsided trades", trade_html),
             ("tendencies", "Manager tendencies", tendencies), ("alltime-overbids", "Waiver overbids", overbids),
