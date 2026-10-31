@@ -1152,16 +1152,16 @@ def overbid_table(rows, budget=100):
                                            ("won", "Successful bids", "Most claims won first"),
                                            ("rate", "Win rate", "Highest share of claims won first"),
                                            ("big", "Biggest spend", "Biggest single winning bid first"),
-                                           ("moves", "Roster moves", "Most waiver claims plus free agent adds first")])
+                                           ("moves", "Roster moves", "Most players added (waiver wins plus free agents) first")])
     data = lambda x: {"over": x["over"] + x["spent"] / 1e4, "spent": x["spent"] + x["over"] / 1e4, "bids": x["bids"] + x["won"] / 100,
                       "won": x["won"] + x["bids"] / 100, "rate": (x["won"] / x["bids"] if x["bids"] else -1) + x["bids"] / 1e4,
-                      "big": x["biggest"]["bid"] + x["spent"] / 1e4, "moves": x["moves"] + x["bids"] / 1000, "need": 0}
+                      "big": x["biggest"]["bid"] + x["spent"] / 1e4, "moves": x["moves"] + x["won"] / 1000, "need": 0}
     return (f'<div class="panel scroll sortbars">{controls}{legend}<table class="expand"><thead><tr><th></th><th>Team</th><th class="barcell">FAAB spent on wins</th>'
             f'<th class="n">Overbid</th><th class="n">Spent</th><th class="n">Bids</th><th class="n">Won</th><th class="n">Win %</th><th class="n">Roster moves</th><th>Biggest spend</th></tr></thead>'
             f'<tbody>{_xrows("ob", rows, cells, detail, 10, data)}</tbody></table></div>'
             f'<p class="note">Overbid is how much a winning claim beat the next-highest bid on the same player by; when nobody else put in a claim, '
             f'the whole bid counts, since the minimum bid is $0. Ties won on waiver priority count as $0 over. Bids count every waiver claim, '
-            f'including $0 claims and ones that lost or failed because the roster would have been too full. Roster moves = those bids plus free agent adds (FA). Budget is ${budget}. Click a team for every claim.</p>')
+            f'including $0 claims and ones that lost or failed because the roster would have been too full. Roster moves = players actually added: waiver claims won plus free agent adds (FA). Budget is ${budget}. Click a team for every claim.</p>')
 
 
 def column(paras, by, source="this week’s stats"):
@@ -1660,7 +1660,7 @@ def alltime_sections(sums):
                 f'<th class="barcell">FAAB spent on wins</th><th class="n" aria-sort="descending">Overbid</th><th class="n">Spent</th><th class="n">Bids</th>'
                 f'<th class="n">Won</th><th class="n">Win %</th><th class="n">Roster moves</th><th>Biggest spend</th></tr></thead><tbody>{"".join(otrs)}</tbody></table></div>'
                 '<p class="note">Every season added up, including this one so far. Overbid = how much winning claims beat the next-highest bid on the '
-                'same player (the whole bid when nobody else claimed him). Bids include $0 claims. Roster moves = bids plus free agent adds (FA). Biggest spend = the largest single winning bid. Click a column header to sort.</p>')
+                'same player (the whole bid when nobody else claimed him). Bids include $0 claims. Roster moves = players actually added: waiver claims won plus free agent adds (FA). Biggest spend = the largest single winning bid. Click a column header to sort.</p>')
 
     return [("alltime-standings", "All-time standings", standings), ("head-to-head", "Head to head", headtohead),
             ("finishes", "Where everyone finished", finishes), ("champions", "Champions and last places", champs),
