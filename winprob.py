@@ -40,7 +40,7 @@ def _fetch(url, retries=3):
         try:
             with urllib.request.urlopen(req, timeout=60) as resp:
                 return json.load(resp)
-        except urllib.error.URLError:
+        except (urllib.error.URLError, TimeoutError):  # a read that times out raises TimeoutError, not URLError
             if attempt == retries:
                 raise
             time.sleep(2 ** attempt)
