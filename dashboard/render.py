@@ -128,6 +128,12 @@ table.sortable th[aria-sort="ascending"]::after{content:" ▲"}
 .chip.m1{background:#f2c94c}
 .chip.m2{background:#cfd4da;color:#2b3036}
 .chip.m3{background:#d9a066;color:#3a2410}
+td.pk{cursor:pointer}
+td.pk:focus-visible,td.pk.on{outline:2px solid var(--a);outline-offset:-2px}
+.pop{position:fixed;z-index:40;width:260px;background:var(--surface);border:1px solid var(--rule);border-radius:10px;
+ box-shadow:0 8px 24px rgba(0,0,0,.18);padding:10px 12px;font-size:13.5px;text-align:left}
+.pop table td{padding:3px 0;border:0}
+.pop .x{position:absolute;top:6px;right:8px;border:0;background:none;color:var(--ink3);font-size:16px;cursor:pointer}
 table.expand tr.xrow{cursor:pointer}
 table.expand tr.xrow:hover td{background:var(--grid)}
 table.expand tr.xrow:focus-visible{outline:2px solid var(--a);outline-offset:-2px}
@@ -802,6 +808,29 @@ document.querySelectorAll('table.sortable').forEach(function (t) {
     th.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sort(); } });
   });
 });
+(function () {
+  var pop = null, cur = null;
+  function close() { if (pop) { pop.remove(); pop = null; } if (cur) { cur.classList.remove('on'); cur = null; } }
+  function open(td) {
+    close(); cur = td; td.classList.add('on');
+    pop = document.createElement('div'); pop.className = 'pop'; pop.setAttribute('role', 'dialog');
+    pop.appendChild(td.querySelector('template').content.cloneNode(true));
+    var x = document.createElement('button'); x.className = 'x'; x.type = 'button'; x.setAttribute('aria-label', 'Close'); x.textContent = '✕';
+    x.addEventListener('click', close); pop.appendChild(x);
+    document.body.appendChild(pop);
+    var r = td.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight;
+    var left = Math.min(Math.max(8, r.left), window.innerWidth - w - 8);
+    var top = r.bottom + 6 + h > window.innerHeight - 8 ? r.top - h - 6 : r.bottom + 6;
+    pop.style.left = left + 'px'; pop.style.top = Math.max(8, top) + 'px';
+  }
+  document.querySelectorAll('td.pk').forEach(function (td) {
+    td.addEventListener('click', function (e) { e.stopPropagation(); if (cur === td) close(); else open(td); });
+    td.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (cur === td) close(); else open(td); } });
+  });
+  document.addEventListener('click', function (e) { if (pop && !pop.contains(e.target)) close(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+  window.addEventListener('scroll', close, { passive: true });
+})();
 document.querySelectorAll('.switch').forEach(function (box) {
   var sel = box.querySelector('select');
   function apply() { box.querySelectorAll('[data-panel]').forEach(function (p) { p.hidden = p.getAttribute('data-panel') !== sel.value; }); }
@@ -1754,18 +1783,24 @@ def draft_board(d, teams):
                 continue
             c = pos_i.get(x["pos"], 0)
             bg = f"background:color-mix(in srgb,var(--c{c}) 22%,var(--surface))" if c else ""
-            tip = (f'#{x["pick"]} {x["player"]} ({x["pos"]}) to {x["team"]}: {x["pts"]:.1f} pts, {x["value"]:+.1f} vs. slot'
-                   + (f'; {x["gone"]}' if x["gone"] else "") + ("; keeper" if x["keeper"] else ""))
-            tds.append(f'<td style="{bg};font-size:12px;line-height:1.25;padding:5px 6px" title="{esc(tip)}">'
+            card = (f'<div class="eyebrow">Round {x["round"]} · pick {x["pick"]}{" · keeper" if x["keeper"] else ""}</div>'
+                    f'<div style="font-weight:700;font-size:15px">{esc(x["player"])} <span class="muted" style="font-weight:400">{x["pos"] or ""}</span></div>'
+                    f'<div class="muted" style="font-size:12.5px;margin-bottom:6px">Drafted by {esc(x["team"])}</div>'
+                    f'<table><tr><td>Expected for this pick</td><td class="n">{x["exp"]:.1f}</td></tr>'
+                    f'<tr><td>Actual points</td><td class="n team">{x["pts"]:.1f}</td></tr>'
+                    f'<tr><td>vs. expected</td><td class="n team {"pos" if x["value"] >= 0 else "neg"}">{signed(x["value"], 1)}</td></tr></table>'
+                    + (f'<div class="gone-note" style="margin-top:6px">{esc(x["gone"][0].upper() + x["gone"][1:])}</div>' if x["gone"]
+                       else '<div class="muted" style="margin-top:6px;font-size:12.5px">Still on the team</div>'))
+            tds.append(f'<td class="pk" tabindex="0" role="button" aria-label="{esc(x["player"])} details" style="{bg};font-size:12px;line-height:1.25;padding:5px 6px">'
                        f'<b{" class=gone" if x["gone"] else ""}>{esc(x["player"])}</b>{"<span class=star>★</span>" if x["keeper"] else ""}'
-                       f'<div class="{"pos" if x["value"] >= 0 else "neg"}" style="font-size:11px">{x["pts"]:.0f}</div></td>')
+                       f'<div class="{"pos" if x["value"] >= 0 else "neg"}" style="font-size:11px">{x["pts"]:.0f}</div><template>{card}</template></td>')
         trs.append(f'<tr><td class="muted" style="font-size:12px">R{rd}</td>{"".join(tds)}</tr>')
     legend = '<div class="legend">' + "".join(f'<span><i style="background:var(--c{i})"></i>{p}</span>' for p, i in pos_i.items()) + '</div>'
     return (f'<div class="panel scroll">{legend}<table class="picks board" style="min-width:{104 * len(d["slots"])}px"><thead><tr><th></th>{head}</tr></thead>'
             f'<tbody>{"".join(trs)}</tbody></table></div>'
             '<p class="note">The whole draft, by round and draft slot (columns are named for the team that picked first in that slot). '
             'Colors = position; the number is the player’s points this season, green if he beat his slot and red if not. '
-            'Struck through = no longer on the team that drafted him; ★ = keeper. Hover a pick for details.</p>')
+            'Struck through = no longer on the team that drafted him; ★ = keeper. Click a pick for its expected points and how it’s gone.</p>')
 
 
 def redraft_table(d):
