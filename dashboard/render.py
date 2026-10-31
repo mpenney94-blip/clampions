@@ -114,10 +114,10 @@ nav.seasons{display:flex;flex-wrap:wrap;gap:4px;margin:0 0 18px;border-bottom:1p
 nav.seasons a{font:600 15px var(--display);letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);text-decoration:none;padding:8px 14px;border-bottom:3px solid transparent;margin-bottom:-1px}
 nav.seasons a:hover{color:var(--ink)}
 nav.seasons a[aria-current="page"]{color:var(--a);border-bottom-color:var(--a)}
-table.sortable th{cursor:pointer;user-select:none;white-space:nowrap}
-table.sortable th:hover{color:var(--ink)}
-table.sortable th[aria-sort]::after{content:" ▼";font-size:.8em;color:var(--a)}
-table.sortable th[aria-sort="ascending"]::after{content:" ▲"}
+th.sorth{cursor:pointer;user-select:none}
+th.sorth:hover{color:var(--ink)}
+th.sorth[aria-sort]::after{content:" ▼";font-size:.8em;color:var(--a)}
+th.sorth[aria-sort="ascending"]::after{content:" ▲"}
 .totop{display:none;position:fixed;top:16px;right:16px;z-index:50;align-items:center;gap:4px;font:600 14px var(--display);
  letter-spacing:.06em;text-transform:uppercase;text-decoration:none;color:var(--ink);background:var(--surface);
  border:1px solid var(--rule);border-radius:999px;padding:8px 14px;box-shadow:0 4px 14px rgba(0,0,0,.14)}
@@ -715,6 +715,7 @@ document.querySelectorAll('.sortbars').forEach(function (box) {
   var sel = box.querySelector('select'), body = box.querySelector('tbody'), hint = box.querySelector('.sort-hint');
   var th = box.querySelector('th.sort-col');
   function apply() {
+    if (sel.value.indexOf('col:') === 0) return;  // a column-header sort; the shared sorter below handles it
     var o = sel.selectedOptions[0], v = sel.value, k = v.toLowerCase(), plain = o.hasAttribute('data-plain'), lab = o.getAttribute('data-label') || v;
     var rows = Array.prototype.slice.call(body.rows).filter(function (r) { return !r.classList.contains('xdetail'); });
     rows.sort(function (a, b) { return +b.getAttribute('data-' + k) - +a.getAttribute('data-' + k); });
@@ -787,27 +788,93 @@ document.querySelectorAll('.trend-card').forEach(function (card) {
   function hide() { xh.style.display = 'none'; xd.style.display = 'none'; tip.hidden = true; }
   hit.addEventListener('pointermove', show); hit.addEventListener('pointerdown', show); hit.addEventListener('pointerleave', hide);
 });
-document.querySelectorAll('table.sortable').forEach(function (t) {
-  var body = t.tBodies[0], ths = t.tHead.rows[0].cells;
-  function val(row, i) {
-    var c = row.cells[i], v = c.hasAttribute('data-v') ? c.getAttribute('data-v') : c.textContent.replace(/[$,%]/g, '').trim();
-    var n = parseFloat(v);
-    return isNaN(n) || !/^-?[\\d.]/.test(v) ? v.toLowerCase() : n;
+// Every sortable table gets both a Sort by menu and clickable column headers, kept in sync.
+// Tables with their own menu (.sortbars) keep their custom options; plain table.sortable ones get a menu built from the headers.
+(function () {
+  function heads(t) { var r = t.tHead && t.tHead.rows[t.tHead.rows.length - 1]; return r ? Array.prototype.slice.call(r.cells) : []; }
+  function rowsOf(t) { return Array.prototype.slice.call(t.tBodies[0].rows).filter(function (r) { return !r.classList.contains('xdetail'); }); }
+  function place(t, rows) {
+    var body = t.tBodies[0];
+    rows.forEach(function (r, i) {
+      body.appendChild(r);
+      var id = r.getAttribute('aria-controls'), d = id && document.getElementById(id);
+      if (d) body.appendChild(d);
+      var rk = r.querySelector('.rank'); if (rk) rk.textContent = i + 1;
+    });
   }
-  Array.prototype.forEach.call(ths, function (th, i) {
-    th.setAttribute('tabindex', '0');
-    function sort() {
-      var rows = Array.prototype.slice.call(body.rows), text = typeof val(rows[0], i) === 'string';
-      var dir = th.getAttribute('aria-sort') === (text ? 'ascending' : 'descending') ? (text ? 'descending' : 'ascending') : (text ? 'ascending' : 'descending');
-      rows.sort(function (a, b) { var x = val(a, i), y = val(b, i); return (x < y ? -1 : x > y ? 1 : 0) * (dir === 'ascending' ? 1 : -1); });
-      rows.forEach(function (r) { body.appendChild(r); });
-      Array.prototype.forEach.call(ths, function (h) { h.removeAttribute('aria-sort'); });
-      th.setAttribute('aria-sort', dir);
+  function val(r, i) {
+    var c = r.cells[i]; if (!c) return '';
+    var v = c.hasAttribute('data-v') ? c.getAttribute('data-v') : c.textContent.replace(/[$,%▸▾]/g, '').replace(/−/g, '-').trim();
+    var n = parseFloat(v);
+    return isNaN(n) || !/^[-+]?[0-9.]/.test(v) ? v.toLowerCase() : n;
+  }
+  function norm(x) { return x.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
+  function setup(t) {
+    if (!t.tHead || !t.tBodies[0] || t.dataset.sortReady || t.closest('tr.xdetail')) return;  // skip tables inside expanded rows
+    t.dataset.sortReady = '1';
+    var hs = heads(t), box = t.closest('.sortbars'), sel = box && box.querySelector('select'), hint = box && box.querySelector('.sort-hint');
+    var original = rowsOf(t);
+    var cols = [];
+    hs.forEach(function (h, i) {
+      var vals = original.map(function (r) { return val(r, i); });
+      var name = h.textContent.trim();
+      if (name && name !== '#' && vals.some(function (v) { return v !== '' && v !== vals[0]; })) cols.push(i);
+    });
+    if (!sel) {  // build a menu from the headers
+      var bar = document.createElement('div'); bar.className = 'hl-bar';
+      var lab = document.createElement('label'); lab.textContent = 'Sort by';
+      sel = document.createElement('select'); sel.setAttribute('autocomplete', 'off');
+      sel.id = 'sort-' + Math.random().toString(36).slice(2, 8); lab.htmlFor = sel.id;
+      var o0 = document.createElement('option'); o0.value = ''; o0.textContent = 'Default order'; sel.appendChild(o0);
+      cols.forEach(function (i) { var o = document.createElement('option'); o.value = 'col:' + i; o.textContent = hs[i].textContent.trim(); sel.appendChild(o); });
+      hint = document.createElement('span'); hint.className = 'muted sort-hint';
+      bar.append(lab, sel, hint);
+      var host = t.closest('.panel') || t.parentNode;
+      host.insertBefore(bar, host.firstChild);
+      var pre = hs.findIndex(function (h) { return h.getAttribute('aria-sort'); });
+      if (pre >= 0 && cols.indexOf(pre) >= 0) sel.value = 'col:' + pre;
     }
-    th.addEventListener('click', sort);
-    th.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sort(); } });
-  });
-});
+    function sortBy(i, dir) {
+      var rows = rowsOf(t), text = typeof val(rows[0], i) === 'string';
+      dir = dir || (text ? 'ascending' : 'descending');
+      rows.sort(function (a, b) { var x = val(a, i), y = val(b, i); return (x < y ? -1 : x > y ? 1 : 0) * (dir === 'ascending' ? 1 : -1); });
+      place(t, rows);
+      t.querySelectorAll('.stack span').forEach(function (s) { s.style.opacity = ''; });
+      hs.forEach(function (h, j) { if (j === i) h.setAttribute('aria-sort', dir); else h.removeAttribute('aria-sort'); });
+      if (hint) hint.textContent = text ? (dir === 'ascending' ? 'A to Z' : 'Z to A') : (dir === 'descending' ? 'Highest first' : 'Lowest first');
+    }
+    cols.forEach(function (i) {
+      var h = hs[i];
+      h.classList.add('sorth'); h.setAttribute('tabindex', '0');
+      function go() {
+        var text = typeof val(rowsOf(t)[0], i) === 'string', first = text ? 'ascending' : 'descending';
+        var dir = h.getAttribute('aria-sort') === first ? (first === 'ascending' ? 'descending' : 'ascending') : first;
+        sortBy(i, dir);
+        // show the matching menu choice: one of the table's own options if it names this column, else a column option
+        var label = norm(h.textContent), match = Array.prototype.find.call(sel.options, function (o) {
+          var ot = norm(o.textContent); return o.value && o.value.indexOf('col:') !== 0 && ot && (ot === label || ot.indexOf(label) === 0 || label.indexOf(ot) === 0);
+        });
+        var colOpt = sel.querySelector('option[value="col:' + i + '"]');
+        if (!match && !colOpt) {
+          Array.prototype.forEach.call(sel.querySelectorAll('option.tmp'), function (o) { o.remove(); });
+          colOpt = document.createElement('option'); colOpt.className = 'tmp'; colOpt.value = 'col:' + i; colOpt.textContent = h.textContent.trim(); sel.appendChild(colOpt);
+        }
+        sel.value = (match || colOpt).value;
+      }
+      h.addEventListener('click', go);
+      h.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+    });
+    sel.addEventListener('change', function () {
+      var v = sel.value;
+      if (v.indexOf('col:') === 0) { sortBy(+v.slice(4)); return; }
+      if (v === '' && !box) { place(t, original); hs.forEach(function (h) { h.removeAttribute('aria-sort'); }); if (hint) hint.textContent = ''; return; }
+      // one of the table's own options (already applied by its own handler): mark the header it matches, if any
+      var label = norm(sel.selectedOptions[0].textContent);
+      hs.forEach(function (h) { var ht = norm(h.textContent); if (ht && (ht === label || label.indexOf(ht) === 0 || ht.indexOf(label) === 0)) h.setAttribute('aria-sort', 'descending'); else h.removeAttribute('aria-sort'); });
+    });
+  }
+  document.querySelectorAll('.sortbars table, table.sortable').forEach(setup);
+})();
 (function () {
   var pop = null, cur = null;
   function close() { if (pop) { pop.remove(); pop = null; } if (cur) { cur.classList.remove('on'); cur = null; } }
@@ -1714,7 +1781,7 @@ def alltime_sections(sums):
     rows_l = []
     for o in owners:
         ps = held.get(o, {})
-        multi = {pid: h for pid, h in ps.items() if len(h["seasons"]) >= 2 and h["pos"] != "DEF"}
+        multi = {pid: h for pid, h in ps.items() if len(h["seasons"]) >= 2}
         total = sum(h["weeks"] for h in ps.values()) or 1
         rows_l.append((o, ps, multi, sum(h["weeks"] for h in multi.values()) / total))
     for i, (o, ps, multi, share) in enumerate(sorted(rows_l, key=lambda r: (-len(r[2]), -r[3]))):
@@ -1744,7 +1811,7 @@ def alltime_sections(sums):
     loyalty = (f'<div class="panel scroll sortbars">{lcontrols}<table class="expand"><thead><tr><th></th><th>Manager</th>'
                f'<th class="n">Repeat players</th><th class="n">Roster weeks from them</th><th class="n">Keepers used</th>'
                f'<th>Longest-held player</th></tr></thead><tbody>{"".join(ltrs)}</tbody></table></div>')
-    every = sorted(((o, pid, h) for o, ps in held.items() for pid, h in ps.items() if h["pos"] != "DEF" and len(h["seasons"]) >= 2),
+    every = sorted(((o, pid, h) for o, ps in held.items() for pid, h in ps.items() if len(h["seasons"]) >= 2),
                    key=lambda t: -t[2]["weeks"])[:15]
     btrs = "".join(f'<tr><td class="muted">{i}</td><td><b>{esc(h["name"])}</b> <span class="muted">{h["pos"] or ""}</span>'
                    + "".join(f' <span class="chip medal m1">★ kept {s_}</span>' for s_ in sorted(kept.get((o, pid), ())))
@@ -1754,7 +1821,7 @@ def alltime_sections(sums):
                 f'<th>Manager</th><th class="n">Weeks on roster</th><th>Seasons</th></tr></thead><tbody>{btrs}</tbody></table></div>'
                 '<p class="note">Regular-season weeks a player spent on a manager’s roster, starting or on the bench, out of all the regular-season weeks '
                 'that manager has played since 2023 (this season so far included). Repeat players = on the same manager’s roster in at least two '
-                'seasons; team defenses are left out. ★ marks the seasons a player was a keeper for that manager. Click a manager for his players.</p>')
+                'seasons; team defenses count too. ★ marks the seasons a player was a keeper for that manager. Click a manager for his players.</p>')
 
     return [("alltime-standings", "All-time standings", standings), ("head-to-head", "Head to head", headtohead),
             ("finishes", "Where everyone finished", finishes), ("champions", "Champions and last places", champs),

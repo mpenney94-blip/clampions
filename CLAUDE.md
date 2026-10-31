@@ -24,6 +24,14 @@ python3 -m dashboard.build 1387868351270760448 --out <dir> --no-winprob --only 2
 Check pages with Playwright (`PW=$(npm root -g)/playwright node script.js`): screenshot the section, click its controls,
 and listen for `pageerror`. Run the build without piping its exit code away; an exception mid-build leaves an empty page.
 
+## Table conventions
+
+- Every sortable table gets both a "Sort by" menu and clickable column headers, kept in sync by the shared sorter in
+  `HIGHLIGHT_JS`. Use either `_sort_controls()` inside a `.sortbars` panel (custom sort keys from `data-*` row attributes)
+  or `<table class="sortable">` (a menu is built from the headers). Give cells a `data-v` when their text isn't the sort value.
+- Expandable rows (`tr.xrow` + `tr.xdetail`, via `_xrows`) stay attached when sorted; tables inside expanded rows are skipped.
+- Grid/heatmap tables use `.grid-t`, with headers centered over their cells.
+
 ## Workflow conventions
 
 - Each change goes on its own branch, then a PR is opened and merged with `expectedHeadSha`, then the deploy is confirmed
