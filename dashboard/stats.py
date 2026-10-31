@@ -460,7 +460,11 @@ def _departure(lg, r, pid):
             left = t
     now = next((lg.team[o] for o, ps in lg.roster_now.items() if pid in ps), None)
     if left and left["type"] == "trade" and pid in (left.get("adds") or {}):
-        return f"traded to {lg.team[left['adds'][pid]]}, wk {min(left['leg'], lg.weeks[-1])}" + (f" · now on {now}" if now and now != lg.team[left['adds'][pid]] else "")
+        got = [lg.name_of(p) for p, rr in (left.get("adds") or {}).items() if rr == r]
+        got += [f"a {dp['season']} round {dp['round']} pick" for dp in (left.get("draft_picks") or []) if dp.get("owner_id") == r]
+        for_ = (" for " + (", ".join(got[:-1]) + " and " + got[-1] if len(got) > 1 else got[0])) if got else ""
+        return (f"traded to {lg.team[left['adds'][pid]]}, wk {min(left['leg'], lg.weeks[-1])}{for_}"
+                + (f" · now on {now}" if now and now != lg.team[left['adds'][pid]] else ""))
     wk = f" wk {min(left['leg'], lg.weeks[-1])}" if left else ""
     return f"dropped{wk} · " + (f"now on {now}" if now else "free agent")
 
