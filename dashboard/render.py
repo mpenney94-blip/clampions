@@ -2041,3 +2041,52 @@ def coach_section(d):
             '−2 from 30–39, −1 from 40–49 and 0 from 50+. So a 55-yarder (made about 62% of the time for 4.5 points, free to miss) is worth +2.8, '
             'while a 25-yarder (98.5% for 1.5 points, −3 if missed) is worth about +1.4. Plays in the last two minutes when the team trailed by 4 or more are skipped. The team table counts kickers '
             'in that fantasy team’s starting lineup that week; the coach list counts every team. Click a team for the plays.</p>')
+
+
+def roster_profile_table(rows, vet=8):
+    def who(p):
+        return f'{esc(p["player"])} <span class="muted">{p["age"]}</span>' if p else "—"
+
+    def cells(t):
+        return (f'<td class="n team">{t["core_age"]:.1f}</td><td class="n">{t["age"]:.1f}</td><td class="n">{t["exp"]:.1f}</td>'
+                f'<td class="n">{t["rookies"]}</td><td class="n">{t["vets"]}</td>'
+                f'<td class="n {"neg" if t["miss17"] >= 3 else ""}">{t["miss17"]:.1f}</td>'
+                f'<td class="n {"neg" if t["hurt"] else "muted"}">{t["hurt"]}</td>'
+                f'<td style="white-space:nowrap;font-size:13px">{who(t["oldest"])}<div class="muted">{who(t["youngest"])}</div></td>')
+
+    def detail(t):
+        trs = []
+        for p in t["players"]:
+            if p["possible"]:
+                rate = p["played"] / p["possible"]
+                hist = (f'{p["played"]}/{p["possible"]} <span class="{"neg" if rate < .8 else "muted"}">({p["missed"]} missed)</span>')
+            else:
+                hist = '<span class="muted">—</span>'
+            status = (f'<span class="chip" style="color:var(--bad)">{esc(p["status"])}{" · " + esc(p["body"]) if p["body"] else ""}</span>'
+                      if p["status"] else "")
+            exp = "rookie" if p["exp"] == 0 else f'{p["exp"]} yr{"s" if p["exp"] != 1 else ""}'
+            trs.append(f'<tr><td><b>{esc(p["player"])}</b> <span class="muted">{p["pos"]}</span> {status}</td>'
+                       f'<td class="n">{p["age"]}</td><td class="n muted">{exp}</td><td class="n muted">{p["starts"]} start{"" if p["starts"] == 1 else "s"}</td>'
+                       f'<td class="n">{hist}</td></tr>')
+        return ('<table class="picks"><tr><td class="muted">Player</td><td class="n muted">Age</td><td class="n muted">NFL exp.</td>'
+                '<td class="n muted">For this team</td><td class="n muted">Games since 2023</td></tr>' + "".join(trs) + '</table>')
+    controls = _sort_controls("ages", [("core", "Starters’ age", "Oldest regular starters first"),
+                                       ("age", "Roster age", "Oldest roster first"),
+                                       ("young", "Youngest", "Youngest regular starters first"),
+                                       ("exp", "NFL experience", "Most experienced roster first"),
+                                       ("rookies", "Rookies", "Most rookies first"),
+                                       ("vets", f"Veterans ({vet}+ yrs)", "Most veterans first"),
+                                       ("miss", "Injury history", "Starters who have missed the most games first"),
+                                       ("hurt", "Hurt now", "Most players currently out first")])
+    data = lambda t: {"core": t["core_age"], "age": t["age"], "young": -t["core_age"], "exp": t["exp"],
+                      "rookies": t["rookies"] + t["exp"] / 100, "vets": t["vets"] + t["exp"] / 100,
+                      "miss": t["miss17"], "hurt": t["hurt"] + t["miss17"] / 100}
+    return (f'<div class="panel scroll sortbars">{controls}<table class="expand"><thead><tr><th></th><th>Team</th>'
+            f'<th class="n">Starters’ age</th><th class="n">Roster age</th><th class="n">Avg NFL yrs</th><th class="n">Rookies</th>'
+            f'<th class="n">Vets ({vet}+)</th><th class="n">Missed / 17</th><th class="n">Hurt now</th><th>Oldest / youngest</th></tr></thead>'
+            f'<tbody>{_xrows("rp", rows, cells, detail, 10, data)}</tbody></table></div>'
+            '<p class="note">Current rosters, kickers included; team defenses are left out since they have no age or experience. Starters = the players who have started the most for that team this '
+            f'season (as many as there are lineup spots other than defense). Veterans have {vet}+ NFL seasons. Missed / 17 = games the team’s regular starters have missed '
+            'per 17 their NFL teams played, across every season since 2023 (Sleeper’s game logs start there), counting only seasons a player was a '
+            'real contributor (6+ points a game when he played), so backups who never get in aren’t counted as hurt. It can’t tell an injury from a '
+            'suspension or a benching. Hurt now = currently listed out, doubtful, IR or PUP. Click a team for its players.</p>')

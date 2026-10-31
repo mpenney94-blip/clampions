@@ -260,6 +260,8 @@ def build(league_id, out, with_winprob=True, tabs=""):
         "trades": ("Trade scorecard", render.trade_cards(stats.trades(lg))),
         "byes": ("Bye week damage", render.bye_table(weekly.byes(lg))),
         "injuries": ("Injury damage", render.injury_table(weekly.injuries(lg))),
+        "ages": ("Age, experience and injury history", '<p class="lede">Who’s old, who’s green, and whose players keep getting hurt.</p>'
+                 + render.roster_profile_table(weekly.roster_profile(lg))) if not lg.complete else None,
         "bench": ("Points left on the bench", render.bench_table(stats.bench(lg))),
         "waivers": ("Waiver wire", pickups_chart(lg)),
         "waiver-wars": ("Waiver wars", '<p class="lede">Players more than one team put in a claim for, who won them, and what the losing bidders missed out on.</p>'
@@ -283,7 +285,7 @@ def build(league_id, out, with_winprob=True, tabs=""):
         ("scoring", "Scoring", f"Weeks 1–{last}: how many points every team put up, how lucky it was, and where the points came from.",
          ["standings", "trends", "projections", "close", "peaks", "flags", "kickers", "coaches", "schedule", "carry", "boom-bust", "team-grid"]),
         ("roster", "Roster", "Trades, byes, injuries, lineup calls and the waiver wire.",
-         ["trades", "byes", "injuries", "bench", "waivers", "waiver-wars", "overbids", "drops", "position"]),
+         ["trades", "byes", "injuries", "ages", "bench", "waivers", "waiver-wars", "overbids", "drops", "position"]),
         ("draft-group", "Draft", "How the draft played out, and how much each team still leans on it.",
          ["draft-grades", "draft", "draft-board", "redraft", "rounds", "payoff", "sources"]),
     ]

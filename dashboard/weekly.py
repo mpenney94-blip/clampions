@@ -819,3 +819,93 @@ def coach_summary(lg):
         c["coach"] = p["coach"]
     coaches = sorted(({"team": t, **v} for t, v in nfl.items()), key=lambda x: -x["value"])[:10]
     return {"teams": teams, "coaches": coaches, "n": len(plays)}
+
+
+# ---------------------------------------------------------------- roster age, experience and injury history (season)
+def availability_history(lg, min_ppg=6.0, positions=("QB", "RB", "WR", "TE", "K")):
+    """{player: {"played", "possible", "seasons"}} across every season Sleeper has (2023 on): games played versus games his
+    NFL team played while he was on it. A season only counts if he was a real contributor (min_ppg when he played), so
+    backups who dress and never play aren't counted as hurt."""
+    if "_avail" in lg.__dict__:
+        return lg._avail
+    seasons, lid = [], lg.id
+    while lid and lid != "0":
+        info = lg.client.league(lid)
+        seasons.append(info["season"])
+        lid = info.get("previous_league_id")
+    out = collections.defaultdict(lambda: {"played": 0, "possible": 0, "seasons": 0})
+    for season in seasons:
+        last = lg.weeks[-1] if season == lg.season else 18
+        sched = winprob._fetch(f"https://api.sleeper.app/schedule/nfl/regular/{season}")
+        plays_in = collections.defaultdict(set)  # week -> NFL teams with a game
+        for g in sched:
+            plays_in[g["week"]] |= {g["home"], g["away"]}
+        team_wk, gp, pts = collections.defaultdict(dict), collections.defaultdict(set), collections.defaultdict(list)
+        pos_q = "".join(f"&position[]={p}" for p in positions)
+        for w in range(1, last + 1):
+            for kind in ("stats", "projections"):
+                try:
+                    rows = winprob._fetch(f"https://api.sleeper.app/{kind}/nfl/{season}/{w}?season_type=regular{pos_q}")
+                except Exception as e:
+                    print(f"{kind} {season} wk {w} failed: {e}")
+                    continue
+                for r in rows:
+                    pid = r["player_id"]
+                    if r.get("team"):
+                        team_wk[pid].setdefault(w, r["team"])
+                    st = r.get("stats") or {}
+                    if kind == "stats" and st.get("gp"):
+                        gp[pid].add(w)
+                        pts[pid].append(winprob.score_stats(st, lg.scoring))
+        for pid, wk in team_wk.items():
+            if not gp[pid] or sum(pts[pid]) / len(pts[pid]) < min_ppg:
+                continue
+            first, lastw = min(wk), max(wk)
+            known = sorted(wk.items())
+            possible = 0
+            for w in range(first, lastw + 1):
+                team = wk.get(w) or min(known, key=lambda kv: abs(kv[0] - w))[1]  # weeks with no row: nearest known team
+                possible += team in plays_in[w]
+            o = out[pid]
+            o["played"] += len(gp[pid])
+            o["possible"] += max(possible, len(gp[pid]))
+            o["seasons"] += 1
+    lg._avail = dict(out)
+    return lg._avail
+
+
+def roster_profile(lg, vet=8):
+    """Per fantasy team: age, NFL experience and injury history of its current roster and its regular starters."""
+    avail = availability_history(lg)
+    starts = collections.Counter()
+    for w in lg.weeks:
+        for m in lg.matchups[w]:
+            for p in m["starters"]:
+                starts[(m["roster_id"], p)] += 1
+    n_start = sum(1 for sl in lg.slots if sl != "DEF")  # team defenses aren't in this table
+    out = []
+    for r, name in lg.team.items():
+        players = []
+        for pid in lg.roster_now.get(r, ()):
+            info = lg.players.get(pid) or {}
+            if lg.pos_of(pid) == "DEF" or info.get("age") is None:  # a team defense has no age or experience
+                continue
+            a = avail.get(pid)
+            players.append({"pid": pid, "player": lg.name_of(pid), "pos": lg.pos_of(pid), "age": info.get("age"),
+                            "exp": info.get("years_exp") or 0, "starts": starts[(r, pid)],
+                            "played": a["played"] if a else None, "possible": a["possible"] if a else None,
+                            "missed": (a["possible"] - a["played"]) if a else None,
+                            "status": info.get("injury_status"), "body": info.get("injury_body_part")})
+        players.sort(key=lambda p: (-p["starts"], -(p["played"] or 0)))
+        core = players[:n_start]  # the players who have started the most for this team
+        tracked = [p for p in core if p["possible"]]
+        mean = lambda xs: sum(xs) / len(xs) if xs else 0
+        out.append({"team": name, "players": players,
+                    "age": mean([p["age"] for p in players]), "core_age": mean([p["age"] for p in core]),
+                    "exp": mean([p["exp"] for p in players]),
+                    "rookies": sum(1 for p in players if p["exp"] == 0), "vets": sum(1 for p in players if p["exp"] >= vet),
+                    "oldest": max(players, key=lambda p: p["age"], default=None), "youngest": min(players, key=lambda p: p["age"], default=None),
+                    # games missed per 17 by the core, since 2023
+                    "miss17": 17 * sum(p["missed"] for p in tracked) / sum(p["possible"] for p in tracked) if tracked else 0,
+                    "hurt": sum(1 for p in players if p["status"] in ("Out", "IR", "Doubtful", "PUP"))})
+    return sorted(out, key=lambda t: -t["core_age"])
