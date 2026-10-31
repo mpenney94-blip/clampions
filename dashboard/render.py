@@ -306,21 +306,24 @@ def waiver_wars(claims, per_team, teams):
              '</div>')
     mx = max((v["missed"] for v in per_team.values()), default=1) or 1
     trs = []
-    for t in sorted(teams, key=lambda t: -per_team.get(t, {}).get("missed", 0)):
+    for i, t in enumerate(sorted(teams, key=lambda t: -per_team.get(t, {}).get("missed", 0))):
         v = per_team.get(t)
         if not v:
-            trs.append(f'<tr><td class="team">{esc(t)}</td><td class="barcell"><div class="track"></div></td><td class="n muted">0</td><td class="n muted">0.0</td><td class="muted">Never outbid</td></tr>')
+            trs.append(f'<tr><td class="team"><span class="chev" aria-hidden="true" style="visibility:hidden">▸</span> {esc(t)}</td>'
+                       f'<td class="barcell"><div class="track"></div></td><td class="n muted">0</td><td class="n muted">0.0</td><td class="muted">Never outbid</td></tr>')
             continue
         b = v["best"]
-        tip = "".join(f'<tr><td class="muted">Wk {x["claim"]["week"]}</td><td><b>{esc(x["claim"]["player"])}</b></td>'
-                      f'<td>bid ${x["bid"]} vs {esc(x["claim"]["winner"])} ${x["claim"]["win_bid"]}</td>'
-                      f'<td class="n team">{x["claim"]["since"]:.1f}</td></tr>'
-                      for x in sorted(v["claims"], key=lambda x: -x["claim"]["since"]))
-        trs.append(f'<tr><td class="team">{esc(t)}</td><td class="barcell"><div class="tipwrap" tabindex="0" aria-label="{esc(t)}’s lost claims">'
-                   f'<div class="track"><span style="width:{100 * v["missed"] / mx:.1f}%"></span></div>'
-                   f'<div class="tip" role="tooltip"><button type="button" class="tip-close" aria-label="Close">✕</button><div class="eyebrow">{esc(t)} lost out on</div><table>{tip}</table></div></div></td>'
-                   f'<td class="n">{v["lost"]}</td><td class="n team">{v["missed"]:.1f}</td><td>{esc(b["player"])} <span class="muted">{b["since"]:.1f} pts</span></td></tr>')
-    team_tbl = ('<h3 style="margin-top:18px">Points that got away, by team</h3><p class="lede" style="margin:0 0 8px">Hover or tap a bar to see who they lost out on.</p><div class="panel tippanel"><table><thead><tr><th>Team</th>'
+        lost = "".join(f'<tr><td class="muted">Wk {x["claim"]["week"]}</td><td><b>{esc(x["claim"]["player"])}</b> <span class="muted">{x["claim"]["pos"] or ""}</span></td>'
+                       f'<td>bid ${x["bid"]} vs {esc(x["claim"]["winner"])} ${x["claim"]["win_bid"]}</td>'
+                       f'<td class="n team">{x["claim"]["since"]:.1f}</td></tr>'
+                       for x in sorted(v["claims"], key=lambda x: -x["claim"]["since"]))
+        trs.append(f'<tr class="xrow" tabindex="0" role="button" aria-expanded="false" aria-controls="ww-{i}">'
+                   f'<td class="team"><span class="chev" aria-hidden="true">▸</span> {esc(t)}</td>'
+                   f'<td class="barcell"><div class="track"><span style="width:{100 * v["missed"] / mx:.1f}%"></span></div></td>'
+                   f'<td class="n">{v["lost"]}</td><td class="n team">{v["missed"]:.1f}</td><td>{esc(b["player"])} <span class="muted">{b["since"]:.1f} pts</span></td></tr>'
+                   f'<tr class="xdetail" id="ww-{i}" hidden><td colspan="5"><table class="picks">{lost}</table></td></tr>')
+    team_tbl = ('<h3 style="margin-top:18px">Points that got away, by team</h3><p class="lede" style="margin:0 0 8px">Click a team to see who they lost out on.</p>'
+                '<div class="panel scroll"><table class="expand"><thead><tr><th>Team</th>'
                 '<th class="barcell">Points missed</th><th class="n">Lost claims</th><th class="n">Pts</th><th>Biggest miss</th></tr></thead>'
                 f'<tbody>{"".join(trs)}</tbody></table></div>')
     return (tiles + team_tbl +
