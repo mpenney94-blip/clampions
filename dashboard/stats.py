@@ -565,10 +565,8 @@ def _finishes(lg):
     return place
 
 
-def big_days(lg, top=20):
-    """The season's best single-game starter scores and worst bench weeks, regular season plus winners-bracket playoff games
-    (not the 5th-place game). Bench gap = best possible lineup minus the one started."""
-    own = lg.owner
+def _slates(lg):
+    """[(week, matchups, playoff?)]: regular season plus winners-bracket playoff games (not the 5th-place game)."""
     slates = [(w, lg.matchups[w], False) for w in lg.weeks]
     if lg.complete and lg.playoff_start:
         rounds = collections.defaultdict(set)
@@ -577,8 +575,31 @@ def big_days(lg, top=20):
                 rounds[lg.playoff_start + m["r"] - 1] |= {m["t1"], m["t2"]}
         for w, teams in sorted(rounds.items()):
             slates.append((w, [m for m in lg.client.matchups(lg.id, w) if m["roster_id"] in teams], True))
+    return slates
+
+
+def score_lineups(lg, top=5):
+    """Full rosters for the season's highest and lowest team scores, keyed "week:owner" (all-time record book dropdowns).
+    Each: {"starters": [[slot, name, pos, pts]], "bench": [[name, pos, pts]]}."""
+    rows = [(m["points"] or 0.0, w, m) for w, ms, _ in _slates(lg) for m in ms]
+    rows.sort(key=lambda t: -t[0])
+    out = {}
+    for _, w, m in rows[:top] + rows[-top:]:
+        pp = m.get("players_points") or {}
+        starters = [[sl, lg.name_of(p), lg.pos_of(p), round(v or 0, 2)] if p != "0" else [sl, None, None, 0]
+                    for sl, p, v in zip(lg.slots, m["starters"], m.get("starters_points") or [])]
+        bench_ = sorted(([lg.name_of(p), lg.pos_of(p), round(pp.get(p, 0), 2)] for p in m.get("players") or [] if p not in m["starters"]),
+                        key=lambda b: -b[2])
+        out[f"{w}:{lg.owner[m['roster_id']]}"] = {"starters": starters, "bench": bench_}
+    return out
+
+
+def big_days(lg, top=20):
+    """The season's best single-game starter scores and worst bench weeks, regular season plus winners-bracket playoff games
+    (not the 5th-place game). Bench gap = best possible lineup minus the one started."""
+    own = lg.owner
     games, bench_ = [], []
-    for w, ms, pl in slates:
+    for w, ms, pl in _slates(lg):
         by_mid = collections.defaultdict(list)
         for m in ms:
             by_mid[m.get("matchup_id")].append(m)
@@ -665,7 +686,7 @@ def season_summary(lg):
     return {
         "season": lg.season, "complete": lg.complete, "weeks": len(lg.weeks), "playoff_teams": lg.playoff_teams, "teams": teams,
         "keepers": keepers, "trades": trade_rows, "games": games, "rostered": rostered,
-        "big_games": big_games, "bench_weeks": bench_weeks,
+        "big_games": big_games, "bench_weeks": bench_weeks, "lineups": score_lineups(lg),
         "draft": [{"owner": by_name.get(z["team"]), "team": z["team"], "round": z["round"], "pick": z["pick"], "player": z["player"],
                    "pos": z["pos"], "pts": round(z["pts"], 1), "value": round(z["value"], 1), "keeper": z["keeper"]} for z in draft(lg)],
         "faab": {by_name[x["team"]]: {k: x[k] for k in ("bids", "won", "spent", "over", "fa", "moves", "biggest")} for x in waiver_bids(lg)},
