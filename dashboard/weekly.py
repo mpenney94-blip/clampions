@@ -172,9 +172,13 @@ def awards(lg, w, wp=None):
     for m in ms:
         opt, used = _optimal(lg, m.get("players_points") or {})
         eff[m["roster_id"]] = (sc[m["roster_id"]] / opt if opt else 1, opt - sc[m["roster_id"]], m, used)
-    best = max(eff, key=lambda r: (eff[r][0], sc[r]))
-    out["best_call"] = (lg.team[best], eff[best][0], "started its best possible lineup" if eff[best][1] < .05
-                        else f"left only {eff[best][1]:.1f} points on the bench")
+    share = {r: 1.0 if e[1] < .05 else round(e[0], 4) for r, e in eff.items()}  # ties count, perfect lineups all share 100%
+    top = max(share.values())
+    best = sorted((r for r in eff if share[r] == top), key=lambda r: -sc[r])
+    gap = max(eff[r][1] for r in best)
+    out["best_call"] = (", ".join(lg.team[r] for r in best), top,
+                        ("each " if len(best) > 1 else "") + ("started its best possible lineup" if top == 1.0
+                                                               else f"left only {gap:.1f} points on the bench"))
     worst = max(eff, key=lambda r: eff[r][1])
     _, gap, m, used = eff[worst]
     benched = max((p for p in used if p not in m["starters"]), key=lambda p: m["players_points"][p], default=None)
