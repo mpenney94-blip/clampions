@@ -264,6 +264,9 @@ def build(league_id, out, with_winprob=True, tabs=""):
         "ages": ("Age, experience and injury history", '<p class="lede">Who’s old, who’s green, and whose players keep getting hurt.</p>'
                  + render.roster_profile_table(weekly.roster_profile(lg))) if not lg.complete else None,
         "bench": ("Points left on the bench", render.bench_table(stats.bench(lg))),
+        "flex": ("Flex usage", render.flex_table(
+            sorted(({"team": lg.team[r], "weeks": [(w, lg.name_of(p) if p else None, pos, v) for w, p, pos, v in rows]}
+                    for r, rows in stats.flex_usage(lg).items()), key=lambda x: -sum(v for *_, v in x["weeks"])), lg.weeks)),
         "waivers": ("Waiver wire", pickups_chart(lg)),
         "waiver-wars": ("Waiver wars", '<p class="lede">Players more than one team put in a claim for, who won them, and what the losing bidders missed out on.</p>'
                         + render.waiver_wars(*stats.waiver_wars(lg), sorted(lg.team.values(), key=str.lower))),
@@ -286,7 +289,7 @@ def build(league_id, out, with_winprob=True, tabs=""):
         ("scoring", "Scoring", f"Weeks 1–{last}: how many points every team put up, how lucky it was, and where the points came from.",
          ["standings", "trends", "projections", "close", "peaks", "flags", "kickers", "coaches", "schedule", "carry", "boom-bust", "team-grid"]),
         ("roster", "Roster", "Trades, byes, injuries, lineup calls and the waiver wire.",
-         ["trades", "byes", "injuries", "ages", "bench", "waivers", "waiver-wars", "overbids", "drops", "position"]),
+         ["trades", "byes", "injuries", "ages", "bench", "flex", "waivers", "waiver-wars", "overbids", "drops", "position"]),
         ("draft-group", "Draft", "How the draft played out, and how much each team still leans on it.",
          ["draft-grades", "draft", "draft-board", "redraft", "rounds", "payoff", "sources"]),
     ]
@@ -347,7 +350,7 @@ def alltime_page(name, tabs, sums):
         ("at-rivalries", "Rivalries", "Every manager against every other manager.", ["head-to-head", "rivalries", "streaks"]),
         ("at-records", "Records", "The best and worst single games and seasons, and who the schedule has favored.", ["record-book", "big-games", "bench-disasters", "luck"]),
         ("at-moves", "Roster moves", "Keepers, drafts, trades and the waiver wire across every season.",
-         ["keepers", "draft-history", "alltime-trades", "tendencies", "alltime-overbids", "loyalty", "moves"]),
+         ["keepers", "draft-history", "alltime-trades", "tendencies", "alltime-flex", "alltime-overbids", "loyalty", "moves"]),
     ]
     groups = [(gid, g, blurb, [k for k in keys if k in S]) for gid, g, blurb, keys in groups]
     placed = {k for *_, keys in groups for k in keys}
