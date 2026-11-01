@@ -114,6 +114,7 @@ nav.seasons{display:flex;flex-wrap:wrap;gap:4px;margin:0 0 18px;border-bottom:1p
 nav.seasons a{font:600 15px var(--display);letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);text-decoration:none;padding:8px 14px;border-bottom:3px solid transparent;margin-bottom:-1px}
 nav.seasons a:hover{color:var(--ink)}
 nav.seasons a[aria-current="page"]{color:var(--a);border-bottom-color:var(--a)}
+nav.seasons.weeks{margin:0}nav.seasons.weeks a{font-size:14px;padding:8px 12px}
 :root{--t1:rgba(42,120,214,.22);--t2:rgba(235,104,52,.22);--t3:rgba(27,175,122,.22);--t4:rgba(237,161,0,.24);--t5:rgba(232,123,164,.24);--t6:rgba(0,131,0,.22)}
 .xall{margin-left:auto;font:600 12.5px var(--body);color:var(--ink2);background:var(--surface);border:1px solid var(--rule);border-radius:999px;padding:4px 10px;cursor:pointer}
 .xall:hover{border-color:var(--a);color:var(--a)}
@@ -976,6 +977,7 @@ document.querySelectorAll('.trend-card').forEach(function (card) {
       .then(function () { btn.disabled = false; btn.textContent = label; });
   }
   document.querySelectorAll('section[id] > h2').forEach(function (h) {
+    if (h.parentNode.querySelector('[data-nosnap]')) return;  // link lists and the like
     var b = document.createElement('button'); b.type = 'button'; b.className = 'snapbtn'; b.textContent = '📷 Save image';
     b.setAttribute('aria-label', 'Save ' + h.textContent.trim() + ' as an image');
     b.addEventListener('click', function () { snap(h.parentNode, b); });

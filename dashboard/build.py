@@ -227,7 +227,8 @@ def build(league_id, out, with_winprob=True, tabs=""):
     grid = stats.schedule_swap(lg, [rid[t] for t in order])
     wp_cache = {}
     src = stats.sources(lg)
-    week_links = " ".join(f'<a href="weeks/{w}.html">Week {w}</a>' for w in reversed(lg.weeks))
+    week_links = ('<nav class="seasons weeks" aria-label="Past weeks" data-nosnap>'
+                  + "".join(f'<a href="weeks/{w}.html">Week {w}</a>' for w in reversed(lg.weeks)) + '</nav>')
 
     # week-to-week hub
     meta = lg.info.get("metadata") or {}
@@ -239,7 +240,7 @@ def build(league_id, out, with_winprob=True, tabs=""):
     dx = stats.draft_extras(lg)
     S = {k: (t, h) for k, t, h in hub}
     S.update({
-        "history": ("Past weeks", f'<div class="panel">{week_links}</div>'),
+        "history": ("Past weeks", week_links),
         "standings": ("All-play standings", '<p class="lede">How each team would stand if everyone played everyone every week, next to their real record.</p>' + render.allplay_table(ap, lg.weeks)),
         "trends": ("Scoring trends", render.trend_cards(tr_rows, tr_league, lg.weeks)),
         "projections": ("Beating the projections", render.projection_table(proj_rows, proj_over, proj_under, last)),

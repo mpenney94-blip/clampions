@@ -33,7 +33,7 @@ and listen for `pageerror`. Run the build without piping its exit code away; an 
   Any `table.expand` with 2+ dropdown rows gets an "Expand all / Collapse all" button automatically.
 - Grid/heatmap tables use `.grid-t`, with headers centered over their cells.
 - Every `section[id] > h2` gets a "Save image" button (html2canvas from cdnjs, loaded on first use) that captures the
-  section as currently shown. html2canvas can't parse `color-mix()`, so use plain colors or the `--t1`..`--t6` tints.
+  section as currently shown (sections holding a `[data-nosnap]` element, like the Past weeks tabs, are skipped). html2canvas can't parse `color-mix()`, so use plain colors or the `--t1`..`--t6` tints.
 
 ## Workflow conventions
 
