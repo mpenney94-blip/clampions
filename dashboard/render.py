@@ -1,6 +1,7 @@
 """HTML and inline-SVG rendering for the dashboard. No JavaScript needed."""
 
 import collections
+import statistics
 import datetime as dt
 import html
 import json
@@ -2118,6 +2119,71 @@ def alltime_sections(sums):
                   'starting lineup over every point the team has scored (regular season, this season so far included). Top 3 = the share from '
                   'his three biggest contributors. Click a manager for his top 10. Click a column header to sort.</p>')
 
+    # record and scoring by week of the season (regular season)
+    wrec = collections.defaultdict(lambda: collections.defaultdict(lambda: [0, 0, 0]))
+    wpts = collections.defaultdict(lambda: collections.defaultdict(list))
+    wlog = collections.defaultdict(lambda: collections.defaultdict(list))
+    for x in sums:
+        for w, a, sa, b, sb, pl in x.get("games", []):
+            if pl:
+                continue
+            for me, m, them, t in ((a, sa, b, sb), (b, sb, a, sa)):
+                wrec[me][w][0 if m > t else 1 if m < t else 2] += 1
+                wpts[me][w].append(m)
+                wlog[me][w].append(f'{x["season"]}: {"W" if m > t else "L" if m < t else "T"} {m:.1f}–{t:.1f} vs {name.get(them, "?")}')
+    wks = sorted({w for o in wrec for w in wrec[o]})
+    lavg = {w: statistics.mean([v for o in wpts for v in wpts[o].get(w, [])]) for w in wks}
+    word = sorted((o for o in owners if wrec[o]), key=lambda o: -sum(c[0] + c[2] / 2 for c in wrec[o].values()) / max(1, sum(sum(c) for c in wrec[o].values())))
+    rec_rows, pts_rows = [], []
+    for o in word:
+        rc, pc = [], []
+        for w in wks:
+            wl = wrec[o].get(w)
+            if not wl or not sum(wl):
+                rc.append('<td class="w muted" data-v="-1">–</td>')
+                pc.append('<td class="w muted" data-v="-99">–</td>')
+                continue
+            g = sum(wl)
+            pct = (wl[0] + wl[2] / 2) / g
+            step = max(1, min(7, round(1 + 6 * pct)))
+            fg = "#fff" if step >= 5 else "var(--ink)"
+            tip = esc(" · ".join(wlog[o][w]))
+            rc.append(f'<td class="w" style="background:var(--r{step});color:{fg};white-space:nowrap" data-v="{pct + g / 1000:.4f}" title="Week {w} — {tip}">'
+                      f'{wl[0]}-{wl[1]}{f"-{wl[2]}" if wl[2] else ""}</td>')
+            avg = statistics.mean(wpts[o][w])
+            d = avg - lavg[w]
+            a_ = min(.75, abs(d) / 40 + .08)
+            bg = f"rgba(42,120,214,{a_:.2f})" if d >= 0 else f"rgba(235,104,52,{a_:.2f})"
+            pc.append(f'<td class="w" style="background:{bg};white-space:nowrap" data-v="{d:.2f}" title="Week {w}: {avg:.1f} a game, {d:+.1f} vs the league — {tip}">'
+                      f'{avg:.0f}<div style="font-size:11px;font-weight:600;opacity:.85">{d:+.0f}</div></td>')
+        tw = [sum(c[i] for c in wrec[o].values()) for i in range(3)]
+        tg = sum(tw)
+        tpct = (tw[0] + tw[2] / 2) / tg if tg else 0
+        allp = [v for w in wks for v in wpts[o].get(w, [])]
+        diffs = {w: statistics.mean(wpts[o][w]) - lavg[w] for w in wks if wpts[o].get(w)}
+        bw = max(diffs, key=diffs.get)
+        ww = min(diffs, key=diffs.get)
+        rbest = max((w for w in wks if wrec[o].get(w) and sum(wrec[o][w])), key=lambda w: ((wrec[o][w][0] + wrec[o][w][2] / 2) / sum(wrec[o][w]), sum(wrec[o][w])))
+        rworst = min((w for w in wks if wrec[o].get(w) and sum(wrec[o][w])), key=lambda w: ((wrec[o][w][0] + wrec[o][w][2] / 2) / sum(wrec[o][w]), -sum(wrec[o][w])))
+        nm = f'<td style="white-space:nowrap" data-v="{esc(name[o].lower())}">{who(o)}</td>'
+        rec_rows.append(f'<tr>{nm}{"".join(rc)}<td class="n team" data-v="{tpct:.4f}" style="white-space:nowrap">{rec_s(*tw)}</td>'
+                        f'<td class="n" data-v="{rbest}">Wk {rbest}</td><td class="n" data-v="{rworst}">Wk {rworst}</td></tr>')
+        pts_rows.append(f'<tr>{nm}{"".join(pc)}<td class="n team" data-v="{statistics.mean(allp):.2f}">{statistics.mean(allp):.1f}</td>'
+                        f'<td class="n" data-v="{diffs[bw]:.2f}" style="white-space:nowrap">Wk {bw} <span class="pos">{diffs[bw]:+.1f}</span></td>'
+                        f'<td class="n" data-v="{diffs[ww]:.2f}" style="white-space:nowrap">Wk {ww} <span class="neg">{diffs[ww]:+.1f}</span></td></tr>')
+    whead = "".join(f'<th class="n">{w}</th>' for w in wks)
+    lrow = ('<tfoot><tr class="tot"><td class="muted">League avg</td>' + "".join(f'<td class="n">{lavg[w]:.0f}</td>' for w in wks)
+            + '<td></td><td></td><td></td></tr></tfoot>')
+    by_week_html = (f'<div class="panel scroll"><h3>Record in each week of the season</h3><table class="grid-t sortable"><thead><tr><th>Manager</th>{whead}'
+                    f'<th class="n">Overall</th><th class="n">Best week</th><th class="n">Worst week</th></tr></thead><tbody>{"".join(rec_rows)}</tbody></table></div>'
+                    f'<div class="panel scroll" style="margin-top:14px"><h3>Average points in each week of the season</h3><table class="grid-t sortable"><thead><tr><th>Manager</th>{whead}'
+                    f'<th class="n">Overall</th><th class="n">Best week</th><th class="n">Worst week</th></tr></thead><tbody>{"".join(pts_rows)}</tbody>{lrow}</table></div>'
+                    '<p class="note">Every regular-season game since 2023 (this season so far included), grouped by week of the season. '
+                    'Record cells are shaded by win rate: the stronger the blue, the more wins. Points cells show the average score in that week, with the gap to '
+                    'the league average for that week underneath: blue = above, orange = below. Best and worst week: the best and worst win rate '
+                    '(top table) and the biggest gap to the league average (bottom table). Hover or long-press a cell for each game. '
+                    'Click a column header to sort.</p>')
+
     # flex usage, every season
     fpos = [p for p in ("RB", "WR", "TE", "QB") if any(p in f for x in sums for f in x.get("flex", {}).values())]
     ftot = collections.defaultdict(lambda: collections.defaultdict(lambda: [0, 0.0]))
@@ -2171,7 +2237,7 @@ def alltime_sections(sums):
             ("big-games", "Best single-game performances", big_games_html), ("bench-disasters", "Biggest bench disasters", bench_html),
             ("luck", "All-time luck", luck_html), ("streaks", "Streaks", streak_html), ("keepers", "Keepers", keep_html),
             ("draft-history", "Draft history", draft_html), ("alltime-trades", "Most lopsided trades", trade_html),
-            ("tendencies", "Manager tendencies", tendencies), ("alltime-flex", "Flex usage", flex_html), ("alltime-carry", "Who carried each team", carry_html), ("alltime-overbids", "Waiver overbids", overbids),
+            ("tendencies", "Manager tendencies", tendencies), ("alltime-flex", "Flex usage", flex_html), ("alltime-carry", "Who carried each team", carry_html), ("by-week", "By week of the season", by_week_html), ("alltime-overbids", "Waiver overbids", overbids),
             ("loyalty", "Who sticks with their guys", loyalty),
             ("moves", "Best pickups and worst drops", moves)]
 

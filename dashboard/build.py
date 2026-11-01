@@ -348,7 +348,7 @@ def alltime_page(name, tabs, sums):
         ("at-standings", "Standings", "Who has won, who has lost, and where everyone finished.",
          ["alltime-standings", "finishes", "champions", "playoff-records"]),
         ("at-rivalries", "Rivalries", "Every manager against every other manager.", ["head-to-head", "rivalries", "streaks"]),
-        ("at-records", "Records", "The best and worst single games and seasons, and who the schedule has favored.", ["record-book", "big-games", "bench-disasters", "alltime-carry", "luck"]),
+        ("at-records", "Records", "The best and worst single games and seasons, and who the schedule has favored.", ["record-book", "big-games", "bench-disasters", "alltime-carry", "by-week", "luck"]),
         ("at-moves", "Roster moves", "Keepers, drafts, trades and the waiver wire across every season.",
          ["keepers", "draft-history", "alltime-trades", "tendencies", "alltime-flex", "alltime-overbids", "loyalty", "moves"]),
     ]
