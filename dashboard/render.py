@@ -2079,6 +2079,45 @@ def alltime_sections(sums):
                   'lineup would have won. Should have started = the bench players the best lineup would have used. Regular season and '
                   'winners-bracket playoff games. Click a column header to sort.</p>')
 
+    # who carried each manager, every season
+    cpts = collections.defaultdict(lambda: collections.defaultdict(lambda: {"pts": 0.0, "starts": 0, "seasons": set(), "name": "", "pos": ""}))
+    cteam = collections.Counter()
+    for x in sums:
+        for o, z in x["teams"].items():
+            cteam[o] += z["pf"]
+        for o, ps in x.get("rostered", {}).items():
+            for pid, (wks, nm, pos, st, spts) in ps.items():
+                if st:
+                    c = cpts[o][pid]
+                    c["pts"] += spts
+                    c["starts"] += st
+                    c["seasons"].add(x["season"])
+                    c["name"], c["pos"] = nm, pos or ""
+    crows = []
+    order = sorted((o for o in owners if cpts[o] and cteam[o]), key=lambda o: -max(c["pts"] for c in cpts[o].values()) / cteam[o])
+    cmax = max((max(c["pts"] for c in cpts[o].values()) / cteam[o] for o in order), default=1) or 1
+    for i, o in enumerate(order):
+        top = sorted(cpts[o].values(), key=lambda c: -c["pts"])
+        best, tot = top[0], cteam[o]
+        share = best["pts"] / tot
+        top3 = sum(c["pts"] for c in top[:3]) / tot
+        det = "".join(f'<tr><td class="muted">{j}</td><td><b>{esc(c["name"])}</b> <span class="muted">{c["pos"]}</span></td>'
+                      f'<td class="n team">{c["pts"]:,.1f}</td><td class="n">{c["pts"] / tot:.1%}</td><td class="n muted">{c["starts"]} starts</td>'
+                      f'<td class="muted">{", ".join(sorted(c["seasons"]))}</td></tr>' for j, c in enumerate(top[:10], 1))
+        crows.append(f'<tr class="xrow" tabindex="0" role="button" aria-expanded="false" aria-controls="atcarry-{i}">'
+                     f'<td style="white-space:nowrap" data-v="{esc(name[o].lower())}"><span class="chev" aria-hidden="true">▸</span> {who(o)}</td>'
+                     f'<td data-v="{esc(best["name"].lower())}"><b>{esc(best["name"])}</b> <span class="muted">{best["pos"]} · {", ".join(sorted(best["seasons"]))}</span></td>'
+                     f'<td class="n" data-v="{best["pts"]:.1f}" style="white-space:nowrap"><b>{best["pts"]:,.1f}</b> <span class="muted">/ {tot:,.1f}</span></td>'
+                     f'<td class="barcell" data-v="{share:.4f}"><div class="track"><span style="width:{100 * share / cmax:.1f}%;background:var(--a)"></span></div></td>'
+                     f'<td class="n team" data-v="{share:.4f}">{share:.1%}</td><td class="n" data-v="{top3:.4f}">{top3:.0%}</td></tr>'
+                     f'<tr class="xdetail" id="atcarry-{i}" hidden><td colspan="6"><div class="xpin"><table class="picks">{det}</table></div></td></tr>')
+    carry_html = (f'<div class="panel scroll"><table class="sortable expand"><thead><tr><th>Manager</th><th>Biggest contributor</th>'
+                  f'<th class="n">His points / team’s points</th><th class="barcell">Share</th><th class="n"></th><th class="n">Top 3</th></tr></thead>'
+                  f'<tbody>{"".join(crows)}</tbody></table></div>'
+                  '<p class="note">The player who has scored the biggest share of each manager’s points since 2023: his points in that manager’s '
+                  'starting lineup over every point the team has scored (regular season, this season so far included). Top 3 = the share from '
+                  'his three biggest contributors. Click a manager for his top 10. Click a column header to sort.</p>')
+
     # flex usage, every season
     fpos = [p for p in ("RB", "WR", "TE", "QB") if any(p in f for x in sums for f in x.get("flex", {}).values())]
     ftot = collections.defaultdict(lambda: collections.defaultdict(lambda: [0, 0.0]))
@@ -2132,7 +2171,7 @@ def alltime_sections(sums):
             ("big-games", "Best single-game performances", big_games_html), ("bench-disasters", "Biggest bench disasters", bench_html),
             ("luck", "All-time luck", luck_html), ("streaks", "Streaks", streak_html), ("keepers", "Keepers", keep_html),
             ("draft-history", "Draft history", draft_html), ("alltime-trades", "Most lopsided trades", trade_html),
-            ("tendencies", "Manager tendencies", tendencies), ("alltime-flex", "Flex usage", flex_html), ("alltime-overbids", "Waiver overbids", overbids),
+            ("tendencies", "Manager tendencies", tendencies), ("alltime-flex", "Flex usage", flex_html), ("alltime-carry", "Who carried each team", carry_html), ("alltime-overbids", "Waiver overbids", overbids),
             ("loyalty", "Who sticks with their guys", loyalty),
             ("moves", "Best pickups and worst drops", moves)]
 
