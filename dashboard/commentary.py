@@ -5,6 +5,7 @@ otherwise (or if the call fails) a built-in writer does, picking from canned lin
 """
 
 import collections
+import statistics
 import glob
 import hashlib
 import html
@@ -96,6 +97,88 @@ def week_facts(lg, w, wp=None, odds_now=None, odds_prev=None):
     return facts
 
 
+def _ordinal(n):
+    return f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
+
+
+def week_history(lg):
+    """Every regular-season game since 2023 by week of the season, keyed by manager:
+    {owner: {week: [(season, won 1/0/0.5, points, opponent's points, opponent owner)]}}, plus {week: [all scores]}."""
+    if "_week_hist" in lg.__dict__:
+        return lg._week_hist
+    games = collections.defaultdict(lambda: collections.defaultdict(list))
+    scores = collections.defaultdict(list)
+    lid = lg.id
+    while lid and lid != "0":
+        info = lg.client.league(lid)
+        own = {r["roster_id"]: r.get("owner_id") or f"roster-{r['roster_id']}" for r in lg.client.rosters(lid)}
+        if lid == lg.id:
+            weeks = [x for x in lg.reg_weeks if x < lg.next_week]
+        else:
+            start = (info.get("settings") or {}).get("playoff_week_start") or 15
+            weeks = range(1, start)
+        for w in weeks:
+            ms = lg.matchups[w] if lid == lg.id and w in lg.matchups else lg.client.matchups(lid, w)
+            by_mid = collections.defaultdict(list)
+            for m in ms or []:
+                if m.get("matchup_id"):
+                    by_mid[m["matchup_id"]].append(m)
+            for pair in by_mid.values():
+                if len(pair) != 2:
+                    continue
+                for me, them in (pair, pair[::-1]):
+                    a, b = me.get("points") or 0.0, them.get("points") or 0.0
+                    if not a and not b:
+                        continue  # not played yet
+                    games[own[me["roster_id"]]][w].append((info["season"], 1 if a > b else 0 if a < b else .5, a, b, own[them["roster_id"]]))
+                    scores[w].append(a)
+        lid = info.get("previous_league_id")
+    lg._week_hist = (games, scores)
+    return lg._week_hist
+
+
+def week_number_facts(lg, w, rid):
+    """How this team's manager has done in week w of past seasons, with the notable bits spelled out for the writer."""
+    games, _ = week_history(lg)
+    # only what was known before week w: this season's games from week w on haven't happened yet as far as the preview knows
+    seen = {o_: {x: [g for g in gs if g[0] != lg.season or x < w] for x, gs in by_w.items()} for o_, by_w in games.items()}
+    scores = collections.defaultdict(list)
+    for by_w in seen.values():
+        for x, gs in by_w.items():
+            scores[x] += [g[2] for g in gs]
+    o = lg.owner[rid]
+    mine = {x: gs for x, gs in seen.get(o, {}).items() if gs}
+    here = mine.get(w) or []
+    if not here:
+        return None
+    lavg = {x: statistics.mean(v) for x, v in scores.items() if v}
+    diff = {x: statistics.mean(p for _, _, p, _, _ in g) - lavg[x] for x, g in mine.items() if g}
+    order = sorted(diff, key=lambda x: -diff[x])
+    rank = order.index(w) + 1
+    wins = sum(r for _, r, _, _, _ in here)
+    losses = sum(1 for _, r, _, _, _ in here if r == 0)
+    ties = sum(1 for _, r, _, _, _ in here if r == .5)
+    avg = statistics.mean(p for _, _, p, _, _ in here)
+    rate = {x: sum(r for _, r, _, _, _ in g) / len(g) for x, g in mine.items() if g}
+    notable = []
+    if len(here) >= 2 and losses == len(here):
+        notable.append(f"has never won a week {w} game ({len(here)} tries)")
+    if len(here) >= 2 and losses == 0 and not ties:
+        notable.append(f"has never lost a week {w} game ({len(here)}-0)")
+    if rank == 1:
+        notable.append(f"week {w} is his best-scoring week of the season relative to the league ({diff[w]:+.1f} vs. the league average)")
+    elif rank == len(order):
+        notable.append(f"week {w} is his worst-scoring week of the season relative to the league ({diff[w]:+.1f} vs. the league average)")
+    if len(here) >= 2 and 0 < losses < len(here) and rate[w] == min(rate.values()):
+        notable.append(f"week {w} is tied for his worst record of any week of the season")
+    return {"record_in_this_week_of_past_seasons": f"{int(wins - ties / 2)}-{losses}" + (f"-{ties}" if ties else ""),
+            "avg_points_in_this_week": round(avg, 1), "vs_league_avg_in_this_week": round(diff[w], 1),
+            "this_week_rank_among_his_weeks": f"{_ordinal(rank)} of {len(order)} weeks, best first (by points vs. the league average)",
+            "past_games_this_week": [f"{season}: {'W' if r == 1 else 'L' if r == 0 else 'T'} {a:.1f}-{b:.1f}"
+                                     for season, r, a, b, _ in sorted(here, reverse=True)],
+            "notable": notable}
+
+
 def preview_facts(lg, w, odds=None, min_ppg=8.0):
     """Facts for week w's look-ahead, as things stood after week w - 1 (rosters that week; injury news only for the real next week)."""
     games = weekly.preview(lg, w)
@@ -134,7 +217,8 @@ def preview_facts(lg, w, odds=None, min_ppg=8.0):
                           "on_bye": byes, "injured": hurt, "empty_lineup_slots": s["empty"],
                           "playoff_odds": _p(o.get("playoffs", 0)), "first_round_bye_odds": _p(o.get("bye", 0)),
                           "last_place_odds": _p(o.get("last", 0)),
-                          "division": lg.division.get(rid[s["team"]])})
+                          "division": lg.division.get(rid[s["team"]]),
+                          "history_in_week_number": week_number_facts(lg, w, rid[s["team"]])})
         same_div = sides[0]["division"] is not None and sides[0]["division"] == sides[1]["division"]
         out.append({"favorite": sides[0], "underdog": sides[1], "favorite_win_chance": _p(g["p"]),
                     "spread": round(g["spread"], 1), "division_game": same_div})
@@ -169,7 +253,9 @@ def _claude(kind, facts):
         ask = {"recap": "Write this week's recap column. Hit the best and worst performances, lineup blunders, flops, lucky and unlucky "
                         "results and anything that collapsed late.",
                "preview": "Write the look-ahead column for next week. Hype the big games, flag teams wrecked by byes or injuries, and spell out "
-                          "the playoff stakes (who is desperate, who is coasting, who is cooked).",
+                          "the playoff stakes (who is desperate, who is coasting, who is cooked). Each team's history_in_week_number is how its "
+                          "manager has done in this same week of past seasons; work in a couple of its notable items (a week he has never "
+                          "won, his best or worst scoring week of the year) where they add to the trash talk.",
                "rivalry": "Write an all-time rivalries column for the league's history page. Roast the managers who keep losing to the same "
                           "person, rub in the most one-sided head-to-head records, hype the dead-even rivalries, and work in playoff "
                           "meetings and titles where they make it sting. Team names in the facts are each manager's current team name.",
@@ -264,6 +350,10 @@ def _preview_lines(f, rnd):
         s = empty[0]
         who = s["empty_lineup_slots"][:2]
         out.append(f"{_b(s['team'])} has {' and '.join(who)} in the starting lineup, projected for zero. Bold strategy.")
+    hist = [(s, n) for s in sides for n in ((s.get("history_in_week_number") or {}).get("notable") or [])]
+    if hist:
+        s, n = hist[0]
+        out.append(f"History lesson: {_b(s['team'])} {n}. Calendars don't lie.")
     bubble = sorted((s for s in sides if 25 <= s["playoff_odds"] <= 75), key=lambda s: abs(s["playoff_odds"] - 50))
     if bubble:
         s = bubble[0]
