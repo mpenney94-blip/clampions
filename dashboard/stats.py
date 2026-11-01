@@ -667,6 +667,33 @@ def perfect_lineup(lg, m):
     return _right_calls(lg, m) == len(lg.slots)
 
 
+def flex_usage(lg):
+    """{roster_id: [(week, player id or None, position or None, points)]} for every flex-type slot started in the regular
+    season (None = the slot was left empty)."""
+    idx = [i for i, sl in enumerate(lg.slots) if sl in FLEX]
+    out = {r: [] for r in lg.team}
+    for w in lg.weeks:
+        for m in lg.matchups[w]:
+            pts = m.get("starters_points") or []
+            for i in idx:
+                pid = m["starters"][i] if i < len(m["starters"]) else "0"
+                if pid == "0":
+                    out[m["roster_id"]].append((w, None, None, 0.0))
+                else:
+                    out[m["roster_id"]].append((w, pid, lg.pos_of(pid), round(pts[i] or 0, 2) if i < len(pts) else 0.0))
+    return out
+
+
+def _flex_totals(rows):
+    """{position: [starts, points]} from flex_usage rows ("" = empty slot)."""
+    t = {}
+    for _, _, pos, v in rows:
+        c = t.setdefault(pos or "", [0, 0.0])
+        c[0] += 1
+        c[1] = round(c[1] + v, 2)
+    return t
+
+
 def start_sit(lg):
     """{owner: [right calls, lineup spots, perfect weeks, weeks, perfect playoff games, playoff games]}. A lineup spot is a
     right call when the player started there belongs in the best possible lineup from that week's roster (ties go to the
@@ -791,7 +818,8 @@ def season_summary(lg):
     return {
         "season": lg.season, "complete": lg.complete, "weeks": len(lg.weeks), "playoff_teams": lg.playoff_teams, "teams": teams,
         "keepers": keepers, "trades": trade_rows, "games": games, "rostered": rostered,
-        "big_games": big_games, "bench_weeks": bench_weeks, "startsit": start_sit(lg), "lineups": score_lineups(lg),
+        "big_games": big_games, "bench_weeks": bench_weeks, "startsit": start_sit(lg),
+        "flex": {lg.owner[r]: _flex_totals(rows) for r, rows in flex_usage(lg).items()}, "lineups": score_lineups(lg),
         "draft": [{"owner": by_name.get(z["team"]), "team": z["team"], "round": z["round"], "pick": z["pick"], "player": z["player"],
                    "pos": z["pos"], "pts": round(z["pts"], 1), "value": round(z["value"], 1), "keeper": z["keeper"]} for z in draft(lg)],
         "faab": {by_name[x["team"]]: {k: x[k] for k in ("bids", "won", "spent", "over", "fa", "moves", "biggest")} for x in waiver_bids(lg)},

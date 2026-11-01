@@ -293,6 +293,58 @@ def bench_table(rows):
     return "".join(out)
 
 
+FLEX_TINT = {"RB": "var(--t1)", "WR": "var(--t2)", "TE": "var(--t3)", "QB": "var(--t4)"}
+
+
+def flex_table(rows, weeks):
+    """rows: [{"team", "weeks": [(week, name or None, pos or None, pts)]}] for one season's flex spot."""
+    if not rows or not weeks:
+        return '<div class="panel muted">No games yet.</div>'
+    poss = [p for p in ("RB", "WR", "TE", "QB") if any(pos == p for r in rows for _, _, pos, _ in r["weeks"])]
+    body = []
+    for i, r in enumerate(rows):
+        byw = collections.defaultdict(list)
+        for w, n, pos, v in r["weeks"]:
+            byw[w].append((n, pos, v))
+        cells = []
+        for w in weeks:
+            got = byw.get(w) or []
+            if not got:
+                cells.append('<td class="w muted" data-v="-1">–</td>')
+                continue
+            tip = "; ".join(f"Week {w}: {n} {pos} {v:.1f}" if n else f"Week {w}: empty" for n, pos, v in got)
+            lab = "<br>".join(f'{pos}<div style="font-size:11px;font-weight:600;opacity:.8">{v:.1f}</div>' if n else '<span class="neg">∅</span>'
+                              for n, pos, v in got)
+            bg = FLEX_TINT.get(got[0][1], "transparent")
+            cells.append(f'<td class="w" style="background:{bg}" data-v="{sum(v for _, _, v in got):.2f}" title="{esc(tip)}">{lab}</td>')
+        tot = {p: [0, 0.0] for p in poss}
+        for _, n, pos, v in r["weeks"]:
+            if n and pos in tot:
+                tot[pos][0] += 1
+                tot[pos][1] += v
+        pts = sum(v for *_, v in r["weeks"])
+        games = len({w for w, *_ in r["weeks"]}) or 1
+        sums = "".join(f'<td class="n" data-v="{tot[p][1]:.2f}" style="white-space:nowrap"><b>{tot[p][0]}</b>'
+                       f'<span class="muted"> · {tot[p][1]:.1f}</span></td>' for p in poss)
+        det = "".join(f'<tr><td class="muted">Wk {w}</td><td>' + (f'<b>{esc(n)}</b> <span class="muted">{pos or ""}</span>' if n else '<span class="neg">Empty</span>')
+                      + f'</td><td class="n team">{v:.1f}</td></tr>' for w, n, pos, v in r["weeks"])
+        body.append(f'<tr class="xrow" tabindex="0" role="button" aria-expanded="false" aria-controls="flex-{i}">'
+                    f'<td class="team" style="white-space:nowrap" data-v="{esc(r["team"].lower())}"><span class="chev" aria-hidden="true">▸</span> {esc(r["team"])}</td>'
+                    f'{"".join(cells)}{sums}<td class="n team" data-v="{pts:.2f}">{pts:.1f}</td><td class="n" data-v="{pts / games:.2f}">{pts / games:.1f}</td></tr>'
+                    f'<tr class="xdetail" id="flex-{i}" hidden><td colspan="{len(weeks) + len(poss) + 3}"><div class="xpin"><table class="picks">{det}</table></div></td></tr>')
+    league = {p: [sum(1 for r in rows for _, n, pos, _ in r["weeks"] if n and pos == p),
+                  sum(v for r in rows for _, n, pos, v in r["weeks"] if n and pos == p)] for p in poss}
+    lg_note = "; ".join(f"{p} {league[p][1] / league[p][0]:.1f} a start ({league[p][0]} starts)" for p in poss if league[p][0])
+    legend = "".join(f'<span style="display:inline-block;padding:1px 8px;border-radius:4px;background:{FLEX_TINT[p]};font-weight:700;margin-right:6px">{p}</span>' for p in poss)
+    return (f'<div class="panel scroll"><div style="margin-bottom:8px">{legend}</div><table class="grid-t sortable expand"><thead><tr><th>Team</th>'
+            + "".join(f'<th class="n">{w}</th>' for w in weeks)
+            + "".join(f'<th class="n">{p} starts · pts</th>' for p in poss)
+            + f'<th class="n">Flex pts</th><th class="n">Per week</th></tr></thead><tbody>{"".join(body)}</tbody></table></div>'
+            f'<p class="note">Who each team started in its flex spot every week, and what he scored. Columns at the right: starts and points '
+            f'by position. League-wide, flex points per start: {lg_note}. Click a team for the players. Click a column header to sort '
+            f'(week columns sort by that week’s flex points).</p>')
+
+
 def trade_cards(trades):
     if not trades:
         return '<div class="panel muted">No trades yet.</div>'
@@ -2027,13 +2079,60 @@ def alltime_sections(sums):
                   'lineup would have won. Should have started = the bench players the best lineup would have used. Regular season and '
                   'winners-bracket playoff games. Click a column header to sort.</p>')
 
+    # flex usage, every season
+    fpos = [p for p in ("RB", "WR", "TE", "QB") if any(p in f for x in sums for f in x.get("flex", {}).values())]
+    ftot = collections.defaultdict(lambda: collections.defaultdict(lambda: [0, 0.0]))
+    fseason = collections.defaultdict(dict)
+    for x in sums:
+        for o, f in x.get("flex", {}).items():
+            fseason[o][x["season"]] = f
+            for p_, (n, v) in f.items():
+                ftot[o][p_][0] += n
+                ftot[o][p_][1] += v
+    def fcell(c):
+        n, v = c
+        return (f'<td class="n" data-v="{n}"><b>{n}</b></td><td class="n" data-v="{v / n if n else 0:.2f}">'
+                + (f'{v / n:.1f}' if n else '<span class="muted">–</span>') + '</td>')
+    frows = []
+    for i, o in enumerate(sorted((o for o in owners if ftot[o]), key=lambda o: -sum(c[1] for c in ftot[o].values()) / max(1, sum(c[0] for c in ftot[o].values())))):
+        t = ftot[o]
+        games = sum(c[0] for c in t.values())
+        pts = sum(c[1] for c in t.values())
+        fav = max(fpos, key=lambda p_: t[p_][0]) if fpos else ""
+        det = "".join(f'<tr><td class="muted">{x_}</td>'
+                      + "".join(f'<td class="n">{f.get(p_, [0, 0])[0]} <span class="muted">· {f.get(p_, [0, 0])[1]:.1f}</span></td>' for p_ in fpos)
+                      + f'<td class="n team">{sum(c[1] for c in f.values()):.1f}</td></tr>'
+                      for x_, f in sorted(fseason[o].items(), reverse=True))
+        det = (f'<div class="xpin"><table class="picks"><tr><td class="muted">Season</td>' + "".join(f'<td class="n muted">{p_} starts · pts</td>' for p_ in fpos)
+               + f'<td class="n muted">Flex pts</td></tr>{det}</table></div>')
+        empty = t[""][0] if "" in t else 0
+        frows.append(f'<tr class="xrow" tabindex="0" role="button" aria-expanded="false" aria-controls="atflex-{i}">'
+                     f'<td style="white-space:nowrap" data-v="{esc(name[o].lower())}"><span class="chev" aria-hidden="true">▸</span> {who(o)}</td>'
+                     + "".join(fcell(t[p_]) for p_ in fpos)
+                     + f'<td class="n" data-v="{empty}">' + (f'<span class="neg">{empty}</span>' if empty else '<span class="muted">0</span>') + '</td>'
+                     f'<td class="n team" data-v="{pts:.2f}">{pts:,.0f}</td><td class="n team" data-v="{pts / games if games else 0:.2f}">{pts / games if games else 0:.1f}</td>'
+                     f'<td data-v="{fav}"><span style="padding:1px 8px;border-radius:4px;background:{FLEX_TINT.get(fav, "transparent")};font-weight:700">{fav}</span> '
+                     f'<span class="muted">{t[fav][0] / games if games else 0:.0%}</span></td></tr>'
+                     f'<tr class="xdetail" id="atflex-{i}" hidden><td colspan="{2 * len(fpos) + 5}">{det}</td></tr>')
+    lgt = {p_: [sum(ftot[o][p_][0] for o in owners), sum(ftot[o][p_][1] for o in owners)] for p_ in fpos}
+    foot = ('<tfoot><tr class="tot"><td class="muted">League</td>' + "".join(
+        f'<td class="n">{lgt[p_][0]}</td><td class="n">{lgt[p_][1] / lgt[p_][0] if lgt[p_][0] else 0:.1f}</td>' for p_ in fpos)
+        + '<td></td><td></td><td></td><td></td></tr></tfoot>')
+    flex_html = (f'<div class="panel scroll"><table class="sortable expand"><thead><tr><th>Manager</th>'
+                 + "".join(f'<th class="n">{p_} starts</th><th class="n">{p_} pts/start</th>' for p_ in fpos)
+                 + f'<th class="n">Empty</th><th class="n">Flex pts</th><th class="n">Per game</th><th>Go-to</th></tr></thead>'
+                 f'<tbody>{"".join(frows)}</tbody>{foot}</table></div>'
+                 '<p class="note">Who each manager has put in the flex spot since 2023 (regular season, this season so far included), and how '
+                 'each position did there. Pts/start = flex points per start at that position. Empty = weeks the flex was left open. '
+                 'Go-to = the position he flexes most, and how often. Click a manager for each season. Click a column header to sort.</p>')
+
     return [("alltime-standings", "All-time standings", standings), ("head-to-head", "Head to head", headtohead),
             ("finishes", "Where everyone finished", finishes), ("champions", "Champions and last places", champs),
             ("playoff-records", "Playoff records", playoffs_html), ("record-book", "Record book", record_book),
             ("big-games", "Best single-game performances", big_games_html), ("bench-disasters", "Biggest bench disasters", bench_html),
             ("luck", "All-time luck", luck_html), ("streaks", "Streaks", streak_html), ("keepers", "Keepers", keep_html),
             ("draft-history", "Draft history", draft_html), ("alltime-trades", "Most lopsided trades", trade_html),
-            ("tendencies", "Manager tendencies", tendencies), ("alltime-overbids", "Waiver overbids", overbids),
+            ("tendencies", "Manager tendencies", tendencies), ("alltime-flex", "Flex usage", flex_html), ("alltime-overbids", "Waiver overbids", overbids),
             ("loyalty", "Who sticks with their guys", loyalty),
             ("moves", "Best pickups and worst drops", moves)]
 
