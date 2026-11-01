@@ -82,6 +82,8 @@ and listen for `pageerror`. Run the build without piping its exit code away; an 
   kept. The live preview and the rivalry column are rewritten only when `COMMENTARY_REFRESH=1` (scheduled and manual
   runs). Expected cost about $0.10–0.15 a week.
 - To add real-life news, append a dated line to the "Real-life news" section of `dashboard/league_notes.md`.
+- The preview's facts include each team's history in that week number of past seasons (`commentary.week_number_facts`:
+  record, average vs. the league, rank among his weeks, and flagged notables like a week he has never won).
 
 ## Open options offered to the owner
 
