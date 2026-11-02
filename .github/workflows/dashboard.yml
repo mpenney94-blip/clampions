@@ -70,8 +70,10 @@ jobs:
       - name: Build site
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}  # optional: without it the built-in writer does the trash talk
-          # scheduled and manual runs may rewrite the live preview and rivalry columns; code pushes reuse what's there
+          # scheduled and manual runs may rewrite the live preview; code pushes reuse what's there
           COMMENTARY_REFRESH: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '1' || '0' }}
+          # the all-time rivalry column is rewritten once a week, on the Tuesday run
+          RIVALRY_REFRESH: ${{ (github.event_name == 'schedule' && contains(github.event.schedule, '* * 2')) && '1' || '0' }}
         run: python -m dashboard.build "$LEAGUE_ID" --out _site --past-cache _past
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

@@ -456,6 +456,11 @@ def _claude(kind, facts):
                           "person, rub in the most one-sided head-to-head records, hype the dead-even rivalries, and work in playoff "
                           "meetings and titles where they make it sting. Team names in the facts are each manager's current team name.",
                }[kind]
+        if kind == "preview" and "since_earlier_column" in facts:
+            ask += (" This is an update of the earlier column for the same week (in since_earlier_column), written a few days ago. "
+                    "Write a fresh column rather than repeating its jokes, and call out what changed since then where it's worth it "
+                    "(a manager who finally fixed a lineup hole, one who still hasn't, injury news, a flipped favorite). If nothing "
+                    "much changed, you can needle the managers who still haven't touched their lineups.")
         if kind in ("recap", "preview"):
             ask += (" Background facts (head_to_head, trophy_case, season_habits, recent_form, history_in_week_number) are optional "
                     "colour: work in one or two when they are genuinely interesting or sharpen a joke this week, and skip the rest - never "
@@ -586,6 +591,46 @@ def _rivalry_lines(f, rnd):
     return out
 
 
+def _load(path):
+    """(paragraphs, facts) from a cached column; older cache files hold just the paragraphs."""
+    with open(path) as f:
+        d = json.load(f)
+    return (d, None) if isinstance(d, list) else (d.get("paras"), d.get("facts"))
+
+
+def _preview_changes(old, new):
+    """What moved between two fact sheets for the same week's preview: lineup holes filled or opened, injury news,
+    projections and win chances."""
+    def sides(f):
+        out = {}
+        for g in f.get("games_closest_first") or []:
+            for k in ("favorite", "underdog"):
+                out[g[k]["team"]] = (g[k], g)
+        return out
+    a, b = sides(old), sides(new)
+    out = []
+    for team, (s, g) in b.items():
+        if team not in a:
+            continue
+        o, og = a[team]
+        name = lambda x: x.split(" (")[0]
+        for key, label in (("empty_lineup_slots", "in the starting lineup projected for zero"), ("on_bye", "on bye"), ("injured", "on the injury report")):
+            was = {name(x) for x in o.get(key) or []}
+            now = {name(x) for x in s.get(key) or []}
+            if was - now:
+                out.append(f"{team}: {', '.join(sorted(was - now))} no longer {label}" + (" (lineup fixed)" if key == "empty_lineup_slots" else ""))
+            if now - was:
+                out.append(f"{team}: {', '.join(sorted(now - was))} now {label}")
+        if abs((s.get("projected") or 0) - (o.get("projected") or 0)) >= 3:
+            out.append(f"{team}: projection {o.get('projected')} -> {s.get('projected')}")
+        if g["favorite"]["team"] == team:
+            if og["favorite"]["team"] != team:
+                out.append(f"{team} is now the favorite (was the underdog)")
+            elif abs(g["favorite_win_chance"] - og["favorite_win_chance"]) >= 8:
+                out.append(f"{team}'s win chance {og['favorite_win_chance']}% -> {g['favorite_win_chance']}%")
+    return out
+
+
 def write(kind, facts, use_claude=True, final=False):
     """Paragraphs of HTML for 'recap', 'preview' or 'rivalry', plus who wrote them. use_claude=False sticks to the built-in writer.
 
@@ -597,7 +642,8 @@ def write(kind, facts, use_claude=True, final=False):
     key = hashlib.sha256(json.dumps([MODEL, SYSTEM, kind, facts], sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:24]
     path = os.path.join(CACHE, f"{kind}-{facts['week']}-{key}.json")
     paras = None
-    keep = kind == "recap" or final or os.environ.get("COMMENTARY_REFRESH") != "1"
+    flag = "RIVALRY_REFRESH" if kind == "rivalry" else "COMMENTARY_REFRESH"
+    keep = kind == "recap" or final or os.environ.get(flag) != "1"
     if use_claude and keep and not os.path.exists(path):
         # reuse the latest column written for this week, even if the stats behind it have shifted since.
         # Only Claude-written seasons are cached, so no other season matches.
@@ -605,14 +651,22 @@ def write(kind, facts, use_claude=True, final=False):
         if done:
             path = done[-1]
     if os.path.exists(path):
-        with open(path) as f:
-            paras = json.load(f)
+        paras = _load(path)[0]
     else:
-        paras = _claude(kind, facts) if use_claude else None
+        ask_facts = facts
+        if kind == "preview" and use_claude:
+            # a rewrite of this week's preview (Thursday after Tuesday's): show the writer what it said and what changed since
+            earlier = sorted(glob.glob(os.path.join(CACHE, f"{kind}-{facts['week']}-*.json")), key=os.path.getmtime)
+            if earlier:
+                old_paras, old_facts = _load(earlier[-1])
+                if old_paras:
+                    ask_facts = dict(facts, since_earlier_column={"earlier_column": old_paras,
+                                                                  "changes_since_then": _preview_changes(old_facts, facts) if old_facts else None})
+        paras = _claude(kind, ask_facts) if use_claude else None
         if paras:
             os.makedirs(CACHE, exist_ok=True)
             with open(path, "w") as f:
-                json.dump(paras, f)
+                json.dump({"paras": paras, "facts": facts}, f, ensure_ascii=False)
     by = "Claude"
     if not paras:
         rnd = random.Random(f"{kind}-{facts['week']}")
