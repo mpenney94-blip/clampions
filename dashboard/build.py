@@ -213,8 +213,9 @@ def week_hub(lg, w, with_winprob, wp_cache, odds, div_names):
     return out
 
 
-def build(league_id, out, with_winprob=True, tabs=""):
+def build(league_id, out, with_winprob=True, tabs="", past_sums=None):
     lg = stats.League(league_id)
+    lg.past_sums = past_sums or []  # earlier seasons' summaries, for the columns' background facts
     now = dt.datetime.now(dt.timezone.utc)
     if not lg.weeks:
         os.makedirs(out, exist_ok=True)
@@ -389,13 +390,27 @@ def build_all(league_id, out, with_winprob=True, past_cache=None, only=None):
         else:
             jobs.append((lid, os.path.join(past_cache, season), tabs, dest))
     stats.SleeperClient().players()  # warm the shared players cache once, before the parallel builds
-    # seasons are independent and mostly wait on the network, so build them side by side
-    with concurrent.futures.ProcessPoolExecutor(max_workers=max(1, len(jobs))) as pool:
-        for f in [pool.submit(build, lid, folder, with_winprob, tabs) for lid, folder, tabs, _ in jobs]:
-            f.result()
-    for _, folder, _, dest in jobs:
+    # earlier seasons are independent and mostly wait on the network, so build them side by side; the current season goes
+    # last because its written columns draw on the earlier seasons' summaries
+    current = [j for j in jobs if j[1] == out]
+    past = [j for j in jobs if j[1] != out]
+    if past:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=len(past)) as pool:
+            for f in [pool.submit(build, lid, folder, with_winprob, tabs) for lid, folder, tabs, _ in past]:
+                f.result()
+    for _, folder, _, dest in past:
         if dest:
             shutil.copytree(folder, dest, dirs_exist_ok=True)
+    past_sums = []
+    for _, season in chain[1:]:
+        for base in (out, past_cache):
+            path = os.path.join(base, season, "summary.json") if base else None
+            if path and os.path.exists(path):
+                with open(path) as sf:
+                    past_sums.append(json.load(sf))
+                break
+    for lid, folder, tabs, _ in current:
+        build(lid, folder, with_winprob, tabs, past_sums)
     name = stats.SleeperClient().league(league_id)["name"]
     os.makedirs(os.path.join(out, "alltime"), exist_ok=True)
     with open(os.path.join(out, "alltime", "index.html"), "w") as f:

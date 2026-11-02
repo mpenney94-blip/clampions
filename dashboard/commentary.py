@@ -15,6 +15,7 @@ import random
 import re
 
 from dashboard import weekly
+from dashboard import stats
 from dashboard.stats import _optimal
 
 MODEL = "claude-sonnet-5-5"
@@ -57,6 +58,9 @@ def week_facts(lg, w, wp=None, odds_now=None, odds_prev=None):
             vals = [s[1] if i else 1 - s[1] for s in series]
             wpm[side] = {"pregame": _p(vals[0]), "low": _p(min(vals)), "high": _p(max(vals))}
 
+    habits = season_habits(lg, w)
+    form = recent_form(lg, w)
+
     def side(r):
         m = ms[r]
         st = [(p, v) for p, v in zip(m["starters"], m["starters_points"]) if p != "0"]
@@ -73,6 +77,7 @@ def week_facts(lg, w, wp=None, odds_now=None, odds_prev=None):
             "biggest_flops": [{"player": lg.name_of(p), "points": v, "projected": round(proj.get(p, 0), 1)} for p, v in flops if proj.get(p, 0) - v > 4],
             "started_players_who_did_not_play": empty,
             "win_probability": wpm.get(lg.team[r]),
+            "season_habits": habits.get(r), "recent_form": form.get(r),
         }
 
     games = []
@@ -89,6 +94,7 @@ def week_facts(lg, w, wp=None, odds_now=None, odds_prev=None):
         "low_score": [lg.team[min(sc, key=sc.get)], round(min(sc.values()), 1)],
         "games_closest_first": games,
         "awards": {k: [v[0], round(v[1], 2) if isinstance(v[1], float) else v[1], v[2]] for k, v in aw.items()},
+        "records_broken": records_broken(lg, w),
     }
     if odds_now and odds_prev:
         prev = {x["team"]: x["playoffs"] for x in odds_prev}
@@ -137,6 +143,13 @@ def week_history(lg):
     return lg._week_hist
 
 
+SHE = {"999827967461089280"}  # Sleeper owner ids of managers who go by she/her (ValueVolplane); everyone else is he/him
+
+
+def _his(lg, r):
+    return "her" if lg.owner.get(r) in SHE else "his"
+
+
 def week_number_facts(lg, w, rid):
     """How this team's manager has done in week w of past seasons, with the notable bits spelled out for the writer."""
     games, _ = week_history(lg)
@@ -166,17 +179,195 @@ def week_number_facts(lg, w, rid):
     if len(here) >= 2 and losses == 0 and not ties:
         notable.append(f"has never lost a week {w} game ({len(here)}-0)")
     if rank == 1:
-        notable.append(f"week {w} is his best-scoring week of the season relative to the league ({diff[w]:+.1f} vs. the league average)")
+        notable.append(f"week {w} is {_his(lg, rid)} best-scoring week of the season relative to the league ({diff[w]:+.1f} vs. the league average)")
     elif rank == len(order):
-        notable.append(f"week {w} is his worst-scoring week of the season relative to the league ({diff[w]:+.1f} vs. the league average)")
+        notable.append(f"week {w} is {_his(lg, rid)} worst-scoring week of the season relative to the league ({diff[w]:+.1f} vs. the league average)")
     if len(here) >= 2 and 0 < losses < len(here) and rate[w] == min(rate.values()):
-        notable.append(f"week {w} is tied for his worst record of any week of the season")
+        notable.append(f"week {w} is tied for {_his(lg, rid)} worst record of any week of the season")
     return {"record_in_this_week_of_past_seasons": f"{int(wins - ties / 2)}-{losses}" + (f"-{ties}" if ties else ""),
             "avg_points_in_this_week": round(avg, 1), "vs_league_avg_in_this_week": round(diff[w], 1),
-            "this_week_rank_among_his_weeks": f"{_ordinal(rank)} of {len(order)} weeks, best first (by points vs. the league average)",
+            "this_week_rank_among_the_managers_weeks": f"{_ordinal(rank)} of {len(order)} weeks, best first (by points vs. the league average)",
             "past_games_this_week": [f"{season}: {'W' if r == 1 else 'L' if r == 0 else 'T'} {a:.1f}-{b:.1f}"
                                      for season, r, a, b, _ in sorted(here, reverse=True)],
             "notable": notable}
+
+
+# ---------------------------------------------------------------- background facts (optional colour for the columns)
+# lg.past_sums: summary.json of every earlier season (set by build_all; empty when only this season is built).
+def _past(lg):
+    return getattr(lg, "past_sums", None) or []
+
+
+def _owner_name(lg, o):
+    return next((n for r, n in lg.team.items() if lg.owner[r] == o), None) or next(
+        (x["teams"][o]["team"] for x in _past(lg) if o in x["teams"]), "?")
+
+
+def _all_games(lg, before):
+    """[(season, week, owner a, score a, owner b, score b, playoff?)]: earlier seasons (regular and winners-bracket playoff
+    games) plus this season's regular-season games before week `before`."""
+    out = [(x["season"], w, a, sa, b, sb, pl) for x in _past(lg) for w, a, sa, b, sb, pl in x.get("games", [])]
+    for w in lg.weeks:
+        if w >= before:
+            continue
+        sc = lg.scores(w)
+        for a, b in {tuple(sorted(p)) for p in lg.opponent(w).items()}:
+            out.append((lg.season, w, lg.owner[a], round(sc[a], 2), lg.owner[b], round(sc[b], 2), False))
+    return out
+
+
+def head_to_head(lg, ra, rb, before):
+    """All-time meetings between two managers, from team a's side, before week `before` of this season."""
+    oa, ob = lg.owner[ra], lg.owner[rb]
+    meet = []
+    for season, w, a, sa, b, sb, pl in _all_games(lg, before):
+        if {a, b} == {oa, ob}:
+            mine, theirs = (sa, sb) if a == oa else (sb, sa)
+            meet.append((season, w, mine, theirs, pl))
+    if not meet:
+        return None
+    wins = sum(1 for *_, m, t, _ in meet if m > t)
+    losses = sum(1 for *_, m, t, _ in meet if m < t)
+    po = [x for x in meet if x[4]]
+    last = max(meet, key=lambda x: (x[0], x[1]))
+    big_a = max(meet, key=lambda x: x[2] - x[3])
+    big_b = min(meet, key=lambda x: x[2] - x[3])
+    ta, tb = lg.team[ra], lg.team[rb]
+    fmt = lambda x: f"{x[0]} wk {x[1]}{' (playoffs)' if x[4] else ''}"
+    out = {"meetings": len(meet), "record": f"{ta} {wins}-{losses} vs {tb}" + (f" ({len(meet) - wins - losses} ties)" if len(meet) - wins - losses else ""),
+           "last_meeting": f"{fmt(last)}: {ta} {last[2]:.1f}, {tb} {last[3]:.1f}"}
+    if po:
+        pw = sum(1 for x in po if x[2] > x[3])
+        out["playoff_meetings"] = f"{ta} {pw}-{len(po) - pw} in the playoffs"
+    if big_a[2] > big_a[3]:
+        out[f"biggest_win_for_{ta}"] = f"{fmt(big_a)}, by {big_a[2] - big_a[3]:.1f}"
+    if big_b[3] > big_b[2]:
+        out[f"biggest_win_for_{tb}"] = f"{fmt(big_b)}, by {big_b[3] - big_b[2]:.1f}"
+    # current streak in the series
+    run, who = 0, None
+    for x in sorted(meet, key=lambda x: (x[0], x[1]), reverse=True):
+        w_ = ta if x[2] > x[3] else tb if x[3] > x[2] else None
+        if who is None:
+            who = w_
+        if w_ != who or w_ is None:
+            break
+        run += 1
+    if who and run >= 2:
+        out["series_streak"] = f"{who} has won the last {run}"
+    return out
+
+
+def trophy_case(lg, r):
+    """Finished seasons only: titles, last places, playoff trips."""
+    o = lg.owner[r]
+    seasons = [(x["season"], x["teams"][o]) for x in _past(lg) if x.get("complete") and o in x["teams"]]
+    if not seasons:
+        return None
+    n = max(len(x["teams"]) for x in _past(lg))
+    titles = [f"{s_} (as {z['team']})" for s_, z in seasons if z.get("finish") == 1]
+    lasts = [f"{s_} (as {z['team']})" for s_, z in seasons if z.get("finish") == n]
+    seconds = [s_ for s_, z in seasons if z.get("finish") == 2]
+    out = {"seasons": len(seasons), "titles": titles or "none", "last_places": lasts or "none",
+           "playoff_trips": f"{sum(1 for _, z in seasons if z.get('playoffs'))} of {len(seasons)}",
+           "finishes": ", ".join(f"{s_}: {z.get('finish')}" for s_, z in sorted(seasons))}
+    if seconds:
+        out["runner_up"] = seconds
+    return out
+
+
+def season_habits(lg, through):
+    """{roster: habits} over this season's regular-season weeks up to `through`, with league ranks (1 = most)."""
+    weeks = [w for w in lg.weeks if w <= through]
+    if not weeks:
+        return {}
+    flex_i = [i for i, sl in enumerate(lg.slots) if sl in stats.FLEX]
+    acc = {r: {"bench": 0.0, "perfect": 0, "right": 0, "spots": 0, "flex": 0.0, "pts": 0.0, "by": collections.Counter()} for r in lg.team}
+    for w in weeks:
+        for m in lg.matchups[w]:
+            a = acc[m["roster_id"]]
+            opt, _ = _optimal(lg, m.get("players_points") or {})
+            sc = m["points"] or 0.0
+            a["bench"] += opt - sc
+            a["pts"] += sc
+            rc = stats._right_calls(lg, m)
+            a["right"] += rc
+            a["spots"] += len(lg.slots)
+            a["perfect"] += rc == len(lg.slots)
+            pts = m.get("starters_points") or []
+            for i in flex_i:
+                if i < len(pts):
+                    a["flex"] += pts[i] or 0
+            for p, v in zip(m["starters"], pts):
+                if p != "0":
+                    a["by"][p] += v or 0
+    rank = lambda k: {r: i for i, r in enumerate(sorted(acc, key=lambda r: -acc[r][k]), 1)}
+    rb, rp, rf = rank("bench"), rank("perfect"), rank("flex")
+    out = {}
+    for r, a in acc.items():
+        pid, v = a["by"].most_common(1)[0] if a["by"] else (None, 0)
+        out[r] = {"points_left_on_bench": f"{a['bench']:.1f} (#{rb[r]} most of {len(acc)})",
+                  "perfect_lineups": f"{a['perfect']} (#{rp[r]})", "start_sit_accuracy": f"{a['right'] / a['spots']:.0%}" if a["spots"] else None,
+                  "flex_points": f"{a['flex']:.1f} (#{rf[r]})",
+                  "carried_by": f"{lg.name_of(pid)}: {v:.1f} of {a['pts']:.1f} team points ({v / a['pts']:.0%})" if pid and a["pts"] else None}
+    return out
+
+
+def recent_form(lg, through):
+    """{roster: power rank, its move since last week, last-3 average vs season average}."""
+    if through not in lg.weeks:
+        return {}
+    now = {x["team"]: x["rank"] for x in weekly.power(lg, through)}
+    prev = {x["team"]: x["rank"] for x in weekly.power(lg, through - 1)} if through - 1 in lg.weeks else {}
+    weeks = [w for w in lg.weeks if w <= through]
+    out = {}
+    for r, t in lg.team.items():
+        sc = [lg.scores(w)[r] for w in weeks]
+        last3 = sc[-3:]
+        out[r] = {"power_rank": now.get(t), "power_rank_last_week": prev.get(t),
+                  "last_3_avg": round(statistics.mean(last3), 1), "season_avg": round(statistics.mean(sc), 1)}
+    return out
+
+
+def records_broken(lg, w):
+    """Notable records set in week w: team scores (season and all-time), single-game player scores, bench disasters."""
+    out = []
+    sc = lg.scores(w)
+    earlier = [lg.scores(x)[r] for x in lg.weeks if x < w for r in lg.team]
+    hist = [v for g in _all_games(lg, w) for v in (g[3], g[5])]
+    for r, v in sc.items():
+        t = lg.team[r]
+        if earlier and v > max(earlier):
+            out.append(f"{t}'s {v:.1f} is the highest score of the season so far")
+        if earlier and v < min(earlier):
+            out.append(f"{t}'s {v:.1f} is the lowest score of the season so far")
+        if len(hist) >= 20:
+            hi = sum(1 for x in hist if x > v) + 1
+            lo = sum(1 for x in hist if x < v) + 1
+            if hi <= 10:
+                out.append(f"{t}'s {v:.1f} is the #{hi} highest score in league history (since 2023, {len(hist)} scores)")
+            if lo <= 10:
+                out.append(f"{t}'s {v:.1f} is the #{lo} lowest score in league history (since 2023)")
+    # single-game player scores
+    past_big = sorted((g["pts"] for x in _past(lg) for g in x.get("big_games", [])), reverse=True)
+    cur = [v for x in lg.weeks if x < w for m in lg.matchups[x] for p, v in zip(m["starters"], m.get("starters_points") or []) if p != "0" and v]
+    pool = sorted(past_big + cur, reverse=True)
+    for m in lg.matchups[w]:
+        for p, v in zip(m["starters"], m.get("starters_points") or []):
+            if p != "0" and v and pool:
+                rk = sum(1 for x in pool if x > v) + 1
+                if rk <= 20:
+                    out.append(f"{lg.name_of(p)}'s {v:.1f} for {lg.team[m['roster_id']]} is the #{rk} single-game score by a starter in league history")
+    # bench disasters
+    past_bench = [b["gap"] for x in _past(lg) for b in x.get("bench_weeks", [])]
+    past_bench += [_optimal(lg, m.get("players_points") or {})[0] - (m["points"] or 0) for x in lg.weeks if x < w for m in lg.matchups[x]]
+    if past_bench:
+        for m in lg.matchups[w]:
+            opt, _ = _optimal(lg, m.get("players_points") or {})
+            gap = opt - (m["points"] or 0)
+            rk = sum(1 for x in past_bench if x > gap) + 1
+            if rk <= 15 and gap > 0:
+                out.append(f"{lg.team[m['roster_id']]} left {gap:.1f} on the bench, the #{rk} worst bench week in league history")
+    return out
 
 
 def preview_facts(lg, w, odds=None, min_ppg=8.0):
@@ -205,6 +396,8 @@ def preview_facts(lg, w, odds=None, min_ppg=8.0):
                 hurt.append(f"{lg.name_of(p)} ({st}, {ppg[p]:.1f}/gm)")
         return byes, hurt
 
+    habits = season_habits(lg, w - 1)
+    form = recent_form(lg, w - 1)
     out = []
     for g in games:
         sides = []
@@ -218,10 +411,13 @@ def preview_facts(lg, w, odds=None, min_ppg=8.0):
                           "playoff_odds": _p(o.get("playoffs", 0)), "first_round_bye_odds": _p(o.get("bye", 0)),
                           "last_place_odds": _p(o.get("last", 0)),
                           "division": lg.division.get(rid[s["team"]]),
-                          "history_in_week_number": week_number_facts(lg, w, rid[s["team"]])})
+                          "history_in_week_number": week_number_facts(lg, w, rid[s["team"]]),
+                          "trophy_case": trophy_case(lg, rid[s["team"]]),
+                          "season_habits": habits.get(rid[s["team"]]), "recent_form": form.get(rid[s["team"]])})
         same_div = sides[0]["division"] is not None and sides[0]["division"] == sides[1]["division"]
         out.append({"favorite": sides[0], "underdog": sides[1], "favorite_win_chance": _p(g["p"]),
-                    "spread": round(g["spread"], 1), "division_game": same_div})
+                    "spread": round(g["spread"], 1), "division_game": same_div,
+                    "head_to_head": head_to_head(lg, rid[sides[0]["team"]], rid[sides[1]["team"]], w)})
     left = [x for x in lg.reg_weeks if x >= w]
     return {"week": w, "league": lg.name, "regular_season_weeks_left_including_this_one": len(left),
             "playoff_teams": lg.playoff_teams, "games_closest_first": out}
@@ -254,12 +450,17 @@ def _claude(kind, facts):
                         "results and anything that collapsed late.",
                "preview": "Write the look-ahead column for next week. Hype the big games, flag teams wrecked by byes or injuries, and spell out "
                           "the playoff stakes (who is desperate, who is coasting, who is cooked). Each team's history_in_week_number is how its "
-                          "manager has done in this same week of past seasons; work in a couple of its notable items (a week he has never "
-                          "won, his best or worst scoring week of the year) where they add to the trash talk.",
+                          "manager has done in this same week of past seasons; work in a couple of its notable items (a week the manager has never "
+                          "won, a best or worst scoring week of the year) where they add to the trash talk.",
                "rivalry": "Write an all-time rivalries column for the league's history page. Roast the managers who keep losing to the same "
                           "person, rub in the most one-sided head-to-head records, hype the dead-even rivalries, and work in playoff "
                           "meetings and titles where they make it sting. Team names in the facts are each manager's current team name.",
                }[kind]
+        if kind in ("recap", "preview"):
+            ask += (" Background facts (head_to_head, trophy_case, season_habits, recent_form, history_in_week_number) are optional "
+                    "colour: work in one or two when they are genuinely interesting or sharpen a joke this week, and skip the rest - never "
+                    "recite stats. If records_broken has anything, give it a mention. Past punishments in the league notes are fair game "
+                    "when a trophy case shows a last place.")
         resp = client.beta.messages.create(
             model=MODEL, max_tokens=16000, betas=["server-side-fallback-2026-07-01"], fallbacks="default",
             output_config={"effort": "medium"}, system=SYSTEM,
@@ -322,6 +523,8 @@ def _recap_lines(f, rnd):
     if mv and mv["biggest_drop"][1] - mv["biggest_drop"][2] >= 8:
         t, a, b = mv["biggest_drop"]
         out.append(f"{_b(t)}'s playoff odds fell from {a}% to {b}%. Start practicing your ‘it's a rebuilding year’ speech.")
+    if f.get("records_broken"):
+        out.append(f"For the record books: {f['records_broken'][0]}.")
     return out
 
 
@@ -350,6 +553,9 @@ def _preview_lines(f, rnd):
         s = empty[0]
         who = s["empty_lineup_slots"][:2]
         out.append(f"{_b(s['team'])} has {' and '.join(who)} in the starting lineup, projected for zero. Bold strategy.")
+    streaks = [x["head_to_head"]["series_streak"] for x in g if (x.get("head_to_head") or {}).get("series_streak")]
+    if streaks:
+        out.append(f"Series watch: {streaks[0]} in this matchup. Some rivalries are just ownership.")
     hist = [(s, n) for s in sides for n in ((s.get("history_in_week_number") or {}).get("notable") or [])]
     if hist:
         s, n = hist[0]
