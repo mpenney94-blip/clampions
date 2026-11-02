@@ -79,9 +79,11 @@ and listen for `pageerror`. Run the build without piping its exit code away; an 
 
 - Model `claude-sonnet-5-5` with server-side fallbacks, `ANTHROPIC_API_KEY` from the repo secret. Current season only;
   finished seasons use the built-in writer.
-- Cached in `.cache/commentary` (Actions cache). A recap, or a preview of a week already played, is written once and
-  kept. The live preview and the rivalry column are rewritten only when `COMMENTARY_REFRESH=1` (scheduled and manual
-  runs). Expected cost about $0.10–0.15 a week.
+- Cached in `.cache/commentary` (Actions cache) as {paras, facts}. A recap, or a preview of a week already played, is
+  written once and kept. The live preview is rewritten when `COMMENTARY_REFRESH=1` (Tuesday and Thursday scheduled runs and
+  manual runs); a rewrite gets the earlier column and `_preview_changes` (lineup holes fixed, injuries, flipped favorites)
+  so Thursday can call out what changed since Tuesday. The rivalry column is rewritten only when `RIVALRY_REFRESH=1`
+  (the Tuesday scheduled run). Expected cost about $0.10–0.15 a week.
 - To add real-life news, append a dated line to the "Real-life news" section of `dashboard/league_notes.md`.
 - Recap and preview facts also carry optional background (head_to_head, trophy_case, season_habits, recent_form,
   records_broken) built from the earlier seasons' summary.json (`lg.past_sums`); build_all builds past seasons first so
