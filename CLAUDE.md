@@ -10,7 +10,8 @@ https://mpenney94-blip.github.io/clampions/
 - `dashboard/stats.py`: `League` (one season's data) plus season stats, `season_summary()` (feeds the all-time page).
 - `dashboard/weekly.py`: playoff odds and clinches, power, awards, preview, trends, byes/injuries, career days, flagged plays, kicking.
 - `dashboard/commentary.py`: fact sheets and the Claude-written columns (recap, preview, rivalry), with a built-in fallback writer.
-- `dashboard/league_notes.md`: league lore fed to the column writer (duck hunt, "he" for managers, puns, dated real-life news).
+- `dashboard/league_notes.md`: league lore fed to the column writer (duck hunt and past punishments, pronouns: she/her for the
+  ValueVolplane manager and he for everyone else, puns, dated real-life news). `commentary.SHE` holds the she/her owner ids.
 - `dashboard/render.py`: all HTML/CSS/JS. `dashboard/build.py`: assembles pages, season tabs and the all-time page.
 - `.github/workflows/dashboard.yml`: builds and deploys.
 
@@ -82,6 +83,9 @@ and listen for `pageerror`. Run the build without piping its exit code away; an 
   kept. The live preview and the rivalry column are rewritten only when `COMMENTARY_REFRESH=1` (scheduled and manual
   runs). Expected cost about $0.10–0.15 a week.
 - To add real-life news, append a dated line to the "Real-life news" section of `dashboard/league_notes.md`.
+- Recap and preview facts also carry optional background (head_to_head, trophy_case, season_habits, recent_form,
+  records_broken) built from the earlier seasons' summary.json (`lg.past_sums`); build_all builds past seasons first so
+  the current season can read them.
 - The preview's facts include each team's history in that week number of past seasons (`commentary.week_number_facts`:
   record, average vs. the league, rank among his weeks, and flagged notables like a week he has never won).
 
