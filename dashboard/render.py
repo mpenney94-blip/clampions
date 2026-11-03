@@ -1664,11 +1664,15 @@ def alltime_sections(sums):
                     'Draft picks are listed but not scored.</p>') if trades_ else '<div class="panel muted">No trades yet.</div>'
 
     # pickups and drops
-    picks_ = sorted((dict(a, season=x["season"]) for x in sums for a in x["pickups"]), key=lambda a: -a["total"])[:10]
+    pick_val = lambda a: a["total"] + a.get("after_trade", 0)
+    picks_ = sorted((dict(a, season=x["season"]) for x in sums for a in x["pickups"]), key=lambda a: -pick_val(a))[:10]
     drops_ = sorted((dict(d, season=x["season"]) for x in sums for d in x["drops"]), key=lambda d: -d.get("gain", 0))[:10]
     ph = "".join(f'<tr><td class="muted">{a["season"]}</td><td><b>{esc(a["player"])}</b> <span class="muted">{a["pos"] or ""}</span></td>'
-                 f'<td>{who(a["owner"], a["team"])}</td><td class="n muted">${a["bid"]}</td><td class="n">{a["games"]}</td>'
-                 f'<td class="n team">{a["total"]:.1f}</td></tr>' for a in picks_)
+                 f'<td>{who(a["owner"], a["team"])}</td><td class="n muted">{"FA" if a.get("how") == "free agent" else f"${a['bid']}"}</td><td class="n">{a["games"]}</td>'
+                 f'<td class="n team">{pick_val(a):.1f}'
+                 + (f'<div class="muted" style="font-size:12px;white-space:nowrap">{a["total"]:.1f} + {a["after_trade"]:.1f} after trading him'
+                    f'{" to " + esc(a["traded_to"]) if a.get("traded_to") else ""} (wk {a["traded_wk"]})</div>' if a.get("after_trade") else '')
+                 + '</td></tr>' for a in picks_)
     def dppg(pts, g):
         return pts / g if g else 0.0
     dh = "".join(f'<tr><td class="muted">{d["season"]}</td><td><b>{esc(d["player"])}</b> <span class="muted">{d["pos"] or ""}</span></td>'
@@ -1676,11 +1680,12 @@ def alltime_sections(sums):
                  f'<td class="n">{dppg(d["before"], d.get("before_games", 0)):.1f}</td>'
                  f'<td class="n">{dppg(d["after"], d["after_games"]):.1f}</td>'
                  f'<td class="n team neg">+{d.get("gain", 0):.1f}</td></tr>' for d in drops_)
-    moves = (f'<div class="panel scroll"><h3 class="pos">Best waiver pickups</h3><table><thead><tr><th>Season</th><th>Player</th><th>Picked up by</th>'
+    moves = (f'<div class="panel scroll"><h3 class="pos">Best pickups</h3><table><thead><tr><th>Season</th><th>Player</th><th>Picked up by</th>'
              f'<th class="n">Bid</th><th class="n">Games</th><th class="n">Points</th></tr></thead><tbody>{ph}</tbody></table></div>'
              f'<div class="panel scroll" style="margin-top:14px"><h3 class="neg">Worst drops</h3><table><thead><tr><th>Season</th><th>Player</th><th>Dropped by</th>'
              f'<th class="n">Dropped</th><th class="n">Avg with them</th><th class="n">Avg since</th><th class="n">Regret per game</th></tr></thead><tbody>{dh}</tbody></table></div>'
-             '<p class="note">Pickups: points scored for the team that picked him up (waiver or free agent), that season. '
+             '<p class="note">Pickups: waiver claims and free-agent adds (FA in the Bid column), ranked by points scored for the team '
+             'that picked him up, that season, plus, when that team flipped him in a trade, what he scored for the rest of the season after it. '
              'Drops: ranked by regret per game, what he averaged after the drop minus the higher of his average for that team and a '
              'replacement-level starter at his position; at least 2 games after, kickers and defenses left out.</p>')
     # head to head
