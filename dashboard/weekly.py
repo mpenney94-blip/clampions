@@ -395,28 +395,50 @@ def _matches(lg, p, token):
 HURT = {"IR": "injured reserve", "Out": "out", "PUP": "PUP list", "Doubtful": "doubtful"}
 
 
-def dropped_hurt(lg, r, ppg, min_ppg=5.0):
-    """Players team r cut who are still hurt and haven't played a down since."""
-    if lg.complete:  # injury status is today's, which says nothing about a finished season
-        return []
+def dropped_hurt(lg, r, ppg, exits, min_ppg=8.0):
+    """Players team r cut while hurt, and what they would have scored for it afterwards. Hurt at the cut = in the last week
+    he was on the roster he either sat out while his NFL team played, or left the game hurt and didn't return. From then on
+    every game his NFL team plays without him costs his season average, until he plays again (or rejoins the team, when
+    the missed games count instead). Game logs only, so finished seasons work too."""
+    on = {w: set(next((m.get("players") or [] for m in lg.matchups[w] if m["roster_id"] == r), [])) for w in lg.weeks}
     out = {}
     for t in sorted(lg.transactions, key=lambda t: t["status_updated"]):
-        if t["status"] != "complete":
+        if t["status"] != "complete" or t["type"] == "trade":  # a traded player wasn't cut
             continue
         for p, rr in (t.get("drops") or {}).items():
-            info = lg.players.get(p) or {}
-            if (rr != r or p in lg.roster_now.get(r, ()) or ppg.get(p, 0) < min_ppg or info.get("injury_status") not in HURT
-                    or any(p in lg.played[w] for w in lg.weeks if w >= t["leg"])):
+            if rr != r or p in out or p.isalpha() or ppg.get(p, 0) < min_ppg:
                 continue
-            now = next((lg.team[o] for o, ps in lg.roster_now.items() if p in ps), None)
-            out[p] = {"week": t["leg"], "player": lg.name_of(p), "pos": lg.pos_of(p), "ppg": ppg[p],
-                      "status": HURT[info["injury_status"]], "injury": info.get("injury_body_part"), "now": now}
+            held = [w for w in lg.weeks if w <= t["leg"] and p in on[w]]
+            if not held:
+                continue
+            wl = held[-1]
+            team = _nfl_team(lg, p, wl)
+            sat = p not in lg.played[wl] and team not in lg.bye.get(wl, set())
+            hurt = p in lg.played[wl] and any(team in ts and _matches(lg, p, n) for n, ts in exits.get(wl, ()))
+            if not (sat or hurt):
+                continue
+            weeks = []
+            for w in lg.weeks:
+                if w <= wl:
+                    continue
+                if p in lg.played[w] or p in on[w]:
+                    break
+                if _nfl_team(lg, p, w) not in lg.bye.get(w, set()):
+                    weeks.append(w)
+            if not weeks:
+                continue  # back before his team played again: not a costly cut
+            info = lg.players.get(p) or {}
+            status = None if lg.complete else HURT.get(info.get("injury_status"))
+            now = None if lg.complete else next((lg.team[o] for o, ps in lg.roster_now.items() if p in ps), None)
+            out[p] = {"week": t["leg"], "player": lg.name_of(p), "pos": lg.pos_of(p), "ppg": ppg[p], "games": weeks,
+                      "lost": ppg[p] * len(weeks), "status": status, "injury": info.get("injury_body_part") if status else None,
+                      "now": now, "back": any(p in lg.played[w] for w in lg.weeks if w > wl)}
     return sorted(out.values(), key=lambda x: x["week"])
 
 
 def injuries(lg, min_ppg=8.0):
     """Points lost to injury: games missed while the player's NFL team played, and games he left hurt and never returned to,
-    plus starts wasted on players who didn't play at all and injured players the team cut."""
+    plus starts wasted on players who didn't play at all, and games missed after the team cut a hurt player."""
     ppg = _ppg(lg)
     exits = {w: injury_exits(lg, w) for w in lg.weeks}
     out = []
@@ -434,9 +456,10 @@ def injuries(lg, min_ppg=8.0):
                 elif v >= min_ppg and not p.isalpha() and any(team in ts and _matches(lg, p, n) for n, ts in exits[w]):
                     got = lg.pts[p].get(w, 0)
                     left.append((w, lg.name_of(p), max(0.0, v - got), got, p in m["starters"]))
-        out.append({"team": name, "missed": missed, "left": left, "dead": dead, "cut": dropped_hurt(lg, r, ppg),
-                    "out": sum(x[2] for x in missed), "early": sum(x[2] for x in left)})
-    return sorted(out, key=lambda x: -(x["out"] + x["early"]))
+        cut = dropped_hurt(lg, r, ppg, exits, min_ppg)
+        out.append({"team": name, "missed": missed, "left": left, "dead": dead, "cut": cut,
+                    "out": sum(x[2] for x in missed), "early": sum(x[2] for x in left), "after": sum(c["lost"] for c in cut)})
+    return sorted(out, key=lambda x: -(x["out"] + x["early"] + x["after"]))
 
 
 # ---------------------------------------------------------------- opponents' career days (season)

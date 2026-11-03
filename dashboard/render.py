@@ -1325,17 +1325,19 @@ def _inj_note(name):
 
 
 def injury_table(rows, min_ppg=8):
-    mx = max(x["out"] + x["early"] for x in rows) or 1
+    tot = lambda x: x["out"] + x["early"] + x["after"]
+    mx = max(tot(x) for x in rows) or 1
 
     def cells(x):
         dead = (f'<span class="neg">{len(x["dead"])}</span>' if x["dead"] else '<span class="muted">0</span>')
-        cut = (f'<span class="neg">{len(x["cut"])}</span>' if x["cut"] else '<span class="muted">0</span>')
         return (f'<td class="barcell"><div class="stack" style="height:12px;min-width:120px;background:var(--grid)">'
                 f'<span data-pos="missed" style="flex:{x["out"] / mx:.4f};background:var(--bad)" title="Missed games: {x["out"]:.1f}"></span>'
                 f'<span data-pos="left" style="flex:{x["early"] / mx:.4f};background:var(--c1)" title="Left hurt: {x["early"]:.1f}"></span>'
-                f'<span style="flex:{max(0, 1 - (x["out"] + x["early"]) / mx):.4f};background:transparent"></span></div></td>'
-                f'<td class="n">{x["out"]:.0f}</td><td class="n">{x["early"]:.0f}</td><td class="n team">{x["out"] + x["early"]:.0f}</td><td class="n">{dead}</td>'
-                f'<td class="n">{cut}</td>')
+                f'<span data-pos="after" style="flex:{x["after"] / mx:.4f};background:var(--c4)" title="After the cut: {x["after"]:.1f}"></span>'
+                f'<span style="flex:{max(0, 1 - tot(x) / mx):.4f};background:transparent"></span></div></td>'
+                f'<td class="n">{x["out"]:.0f}</td><td class="n">{x["early"]:.0f}</td>'
+                f'<td class="n">' + (f'{x["after"]:.0f} <span class="muted">({len(x["cut"])})</span>' if x["cut"] else '<span class="muted">0</span>') + '</td>'
+                f'<td class="n team">{tot(x):.0f}</td><td class="n">{dead}</td>')
 
     def detail(x):
         missed = _plist([(w, n, v, _inj_note(n)) for w, n, v in x["missed"]], "No missed games")
@@ -1344,29 +1346,41 @@ def injury_table(rows, min_ppg=8):
         dead = ('<table class="picks">' + "".join(f'<tr><td class="muted">Wk {w}</td><td><b>{esc(n)}</b> <span class="muted">{pos or ""}</span></td>'
                                                   f'<td class="neg">{why}</td><td class="n team">0.0</td></tr>' for w, n, pos, why in x["dead"]) + '</table>'
                 if x["dead"] else '<span class="muted">None — every starter played</span>')
+
+        def since(c):
+            g = len(c["games"])
+            bits = [f'{g} game{"s" if g != 1 else ""} missed since' + (" · back now" if c["back"] else "")]
+            if c["status"]:
+                bits.append(f'<span class="neg">{esc(c["status"])}{" · " + esc(c["injury"]) if c["injury"] else ""}</span>')
+            if c["now"]:
+                bits.append(f'now on {esc(c["now"])}')
+            return " · ".join(bits)
         cut = ('<table class="picks">' + "".join(
-            f'<tr><td class="muted">Wk {c["week"]}</td><td><b>{esc(c["player"])}</b> <span class="muted">{c["pos"] or ""}</span></td>'
-            f'<td><span class="neg">{esc(c["status"])}{" · " + esc(c["injury"]) if c["injury"] else ""}</span></td>'
-            f'<td class="muted">{"now on " + esc(c["now"]) if c["now"] else "free agent"}</td><td class="n team">{c["ppg"]:.1f}/gm</td></tr>'
+            f'<tr><td class="muted">Wk {c["week"]}</td><td><b>{esc(c["player"])}</b> <span class="muted">{c["pos"] or ""} · {c["ppg"]:.1f}/gm</span></td>'
+            f'<td class="muted">{since(c)}</td><td class="n team">{c["lost"]:.1f}</td></tr>'
             for c in x["cut"]) + '</table>') if x["cut"] else '<span class="muted">None</span>'
         return (f'<div class="grid2"><div><h3>Missed games</h3>{missed}</div><div><h3>Left a game hurt</h3>{left}</div></div>'
                 f'<div class="grid2" style="margin-top:12px"><div><h3>Dead starts</h3>{dead}</div><div><h3>Dropped while hurt</h3>{cut}</div></div>')
     legend = ('<div class="legend"><span><i style="background:var(--bad)"></i>Missed games</span>'
-              '<span><i style="background:var(--c1)"></i>Left a game hurt</span></div>')
+              '<span><i style="background:var(--c1)"></i>Left a game hurt</span>'
+              '<span><i style="background:var(--c4)"></i>After the cut</span></div>')
     controls = _sort_controls("injuries", [("total", "Total", "Most points lost to injury first"),
                                            ("missed", "Missed games", "Most points lost to missed games first"),
                                            ("left", "Left hurt", "Most points lost to in-game injuries first"),
-                                           ("dead", "Dead starts", "Most starters who didn’t play first"),
-                                           ("cut", "Dropped while hurt", "Most injured players cut first")])
-    data = lambda x: {"total": x["out"] + x["early"], "missed": x["out"], "left": x["early"], "dead": len(x["dead"]) + (x["out"] + x["early"]) / 1e4,
-                      "cut": len(x["cut"]) + sum(c["ppg"] for c in x["cut"]) / 1e3}
+                                           ("after", "After the cut", "Most points lost after cutting a hurt player first"),
+                                           ("dead", "Dead starts", "Most starters who didn’t play first")])
+    data = lambda x: {"total": tot(x), "missed": x["out"], "left": x["early"], "after": x["after"] + len(x["cut"]) / 1e3,
+                      "dead": len(x["dead"]) + tot(x) / 1e4}
     return (f'<div class="panel scroll sortbars">{controls}{legend}<table class="expand"><thead><tr><th></th><th>Team</th><th class="barcell">Points lost to injury</th>'
-            f'<th class="n">Missed</th><th class="n">Left hurt</th><th class="n">Total</th><th class="n">Dead starts</th><th class="n">Dropped hurt</th></tr></thead>'
+            f'<th class="n">Missed</th><th class="n">Left hurt</th><th class="n">After the cut</th><th class="n">Total</th><th class="n">Dead starts</th></tr></thead>'
             f'<tbody>{_xrows("inj", rows, cells, detail, 8, data)}</tbody></table></div>'
             f'<p class="note">Only players averaging {min_ppg}+ points a game count. <b>Missed</b>: he was on the roster but didn’t play while his NFL team did '
             '(injury, illness, inactive or suspension), costing his season average. <b>Left hurt</b>: ESPN’s play-by-play logged him '
             '“injured during the play” and he never showed up in a play again or got a “returned to the game” note; the cost is his season average '
-            'minus what he’d scored when he went down. <b>Dead starts</b>: players left in the lineup who didn’t play at all (on bye or out). <b>Dropped hurt</b>: players averaging 5+ a game the team cut who are still listed injured (IR, PUP, out or doubtful) and haven’t played since; Sleeper doesn’t say whether an injury is season-ending, so the listed status and injury are shown instead. Click a team for the players.</p>')
+            'minus what he’d scored when he went down. <b>After the cut</b>: players the team dropped while hurt (in his last week on the roster he sat out '
+            'or left his game injured), charged his season average for every game his NFL team played without him after the cut, until he played again; '
+            'the number of players is in brackets. <b>Dead starts</b>: players left in the lineup who didn’t play at all (on bye or out). '
+            'Click a team for the players.</p>')
 
 
 def _biggest_cell(b, season=None):
