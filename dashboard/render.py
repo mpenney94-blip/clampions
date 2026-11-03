@@ -2200,6 +2200,57 @@ def alltime_sections(sums):
                     '(top table) and the biggest gap to the league average (bottom table). Hover or long-press a cell for each game. '
                     'Click a column header to sort.</p>')
 
+    # injury luck, every season
+    ih = {o: {"missed": 0.0, "left": 0.0, "after": 0.0, "seasons": []} for o in owners}
+    worst_inj = []
+    for x in sums:
+        for o, z in (x.get("injuries") or {}).items():
+            if o not in ih:
+                continue
+            for k in ("missed", "left", "after"):
+                ih[o][k] += z[k]
+            ih[o]["seasons"].append((x["season"], x["teams"].get(o, {}).get("team", ""), z))
+            worst_inj += [(v, n, pos, o, x["season"], x["teams"].get(o, {}).get("team", "")) for n, pos, v in z["players"]]
+    inj_owners = [o for o in owners if ih[o]["seasons"]]
+    irows = []
+    if inj_owners:
+        itot = lambda o: ih[o]["missed"] + ih[o]["left"] + ih[o]["after"]
+        imx = max(itot(o) for o in inj_owners) or 1
+        for i, o in enumerate(sorted(inj_owners, key=lambda o: -itot(o))):
+            h = ih[o]
+            n = len(h["seasons"])
+            det = "".join(
+                f'<tr><td class="muted">{s_}</td><td class="n">{z["missed"]:.0f}</td><td class="n">{z["left"]:.0f}</td><td class="n">{z["after"]:.0f}</td>'
+                f'<td class="n team">{z["missed"] + z["left"] + z["after"]:.0f}</td><td>'
+                + (f'<b>{esc(z["players"][0][0])}</b> <span class="muted">{z["players"][0][2]:.0f}</span>' if z["players"] else '<span class="muted">—</span>')
+                + '</td></tr>' for s_, _, z in sorted(h["seasons"], key=lambda t: t[0], reverse=True))
+            det = (f'<div class="xpin"><table class="picks"><tr><td class="muted">Season</td><td class="n muted">Missed</td><td class="n muted">Left hurt</td>'
+                   f'<td class="n muted">After cut</td><td class="n muted">Total</td><td class="muted">Costliest injury</td></tr>{det}</table></div>')
+            irows.append(f'<tr class="xrow" tabindex="0" role="button" aria-expanded="false" aria-controls="atinj-{i}">'
+                         f'<td style="white-space:nowrap" data-v="{esc(name[o].lower())}"><span class="chev" aria-hidden="true">▸</span> {who(o)}</td>'
+                         f'<td class="barcell" data-v="{itot(o):.1f}"><div class="stack" style="height:12px;min-width:120px;background:var(--grid)">'
+                         f'<span style="flex:{h["missed"] / imx:.4f};background:var(--bad)"></span><span style="flex:{h["left"] / imx:.4f};background:var(--c1)"></span>'
+                         f'<span style="flex:{h["after"] / imx:.4f};background:var(--c4)"></span><span style="flex:{max(0, 1 - itot(o) / imx):.4f}"></span></div></td>'
+                         f'<td class="n" data-v="{h["missed"]:.1f}">{h["missed"]:,.0f}</td><td class="n" data-v="{h["left"]:.1f}">{h["left"]:,.0f}</td>'
+                         f'<td class="n" data-v="{h["after"]:.1f}">{h["after"]:,.0f}</td><td class="n team" data-v="{itot(o):.1f}">{itot(o):,.0f}</td>'
+                         f'<td class="n" data-v="{itot(o) / n:.1f}">{itot(o) / n:,.0f}</td></tr>'
+                         f'<tr class="xdetail" id="atinj-{i}" hidden><td colspan="7">{det}</td></tr>')
+    top_inj = sorted(worst_inj, key=lambda t: -t[0])[:15]
+    tinj = "".join(f'<tr><td class="muted">{j}</td><td><b>{esc(n)}</b> <span class="muted">{pos or ""}</span></td><td>{who(o, team)}</td>'
+                   f'<td class="muted">{s_}</td><td class="n team">{v:.1f}</td></tr>' for j, (v, n, pos, o, s_, team) in enumerate(top_inj, 1))
+    injury_html = ((f'<div class="panel scroll"><div class="legend"><span><i style="background:var(--bad)"></i>Missed games</span>'
+                    f'<span><i style="background:var(--c1)"></i>Left a game hurt</span><span><i style="background:var(--c4)"></i>After the cut</span></div>'
+                    f'<table class="sortable expand"><thead><tr><th>Manager</th><th class="barcell">Points lost to injury</th><th class="n">Missed</th>'
+                    f'<th class="n">Left hurt</th><th class="n">After the cut</th><th class="n">Total</th><th class="n">Per season</th></tr></thead>'
+                    f'<tbody>{"".join(irows)}</tbody></table></div>'
+                    f'<div class="panel scroll" style="margin-top:14px"><h3>Costliest injuries</h3><table><thead><tr><th></th><th>Player</th><th>Team</th>'
+                    f'<th>Season</th><th class="n">Points lost</th></tr></thead><tbody>{tinj}</tbody></table></div>'
+                    '<p class="note">Points lost to injury every season since 2023, worked out the same way as each season’s Injury damage table '
+                    '(players worth 8+ a game: missed games, games left hurt, and games missed after being cut while hurt; a player’s value blends his '
+                    'preseason projection with his real average). Per season = total over the seasons he’s played, this one so far included. Costliest '
+                    'injuries = one player’s total cost to one team in one season. Click a manager for each season. Click a column header to sort.</p>')
+                   if irows else '<div class="panel muted">No injury data yet.</div>')
+
     # flex usage, every season
     fpos = [p for p in ("RB", "WR", "TE", "QB") if any(p in f for x in sums for f in x.get("flex", {}).values())]
     ftot = collections.defaultdict(lambda: collections.defaultdict(lambda: [0, 0.0]))
@@ -2251,7 +2302,7 @@ def alltime_sections(sums):
             ("finishes", "Where everyone finished", finishes), ("champions", "Champions and last places", champs),
             ("playoff-records", "Playoff records", playoffs_html), ("record-book", "Record book", record_book),
             ("big-games", "Best single-game performances", big_games_html), ("bench-disasters", "Biggest bench disasters", bench_html),
-            ("luck", "All-time luck", luck_html), ("streaks", "Streaks", streak_html), ("keepers", "Keepers", keep_html),
+            ("luck", "All-time luck", luck_html), ("injury-luck", "Injury luck", injury_html), ("streaks", "Streaks", streak_html), ("keepers", "Keepers", keep_html),
             ("draft-history", "Draft history", draft_html), ("alltime-trades", "Most lopsided trades", trade_html),
             ("tendencies", "Manager tendencies", tendencies), ("alltime-flex", "Flex usage", flex_html), ("alltime-carry", "Who carried each team", carry_html), ("by-week", "By week of the season", by_week_html), ("alltime-overbids", "Waiver overbids", overbids),
             ("loyalty", "Who sticks with their guys", loyalty),

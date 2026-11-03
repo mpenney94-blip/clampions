@@ -4,6 +4,7 @@ Usage: python3 -m dashboard.build <league_id> [--out _site] [--no-winprob] [--pa
 """
 
 import argparse
+import collections
 import concurrent.futures
 import datetime as dt
 import json
@@ -213,6 +214,25 @@ def week_hub(lg, w, with_winprob, wp_cache, odds, div_names):
     return out
 
 
+def injury_summary(lg, rows):
+    """{owner: {"missed", "left", "after", "players": [[player, pos, points lost], ...] costliest first}} for the all-time page."""
+    owner = {n: lg.owner[r] for r, n in lg.team.items()}
+    pos_by_name = {lg.name_of(p): lg.pos_of(p) for w in lg.weeks for m in lg.matchups[w] for p in m.get("players") or []}
+    out = {}
+    for x in rows:
+        lost, pos = collections.Counter(), {}
+        for _, n, v in x["missed"]:
+            lost[n] += v
+        for _, n, v, _, _ in x["left"]:
+            lost[n] += v
+        for c in x["cut"]:
+            lost[c["player"]] += c["lost"]
+            pos[c["player"]] = c["pos"]
+        out[owner[x["team"]]] = {"missed": round(x["out"], 1), "left": round(x["early"], 1), "after": round(x["after"], 1),
+                                 "players": [[n, pos.get(n) or pos_by_name.get(n), round(v, 1)] for n, v in lost.most_common(8) if v > 0]}
+    return out
+
+
 def build(league_id, out, with_winprob=True, tabs="", past_sums=None):
     lg = stats.League(league_id)
     lg.past_sums = past_sums or []  # earlier seasons' summaries, for the columns' background facts
@@ -236,6 +256,7 @@ def build(league_id, out, with_winprob=True, tabs="", past_sums=None):
     div_names = {int(k.split("_")[1]): v for k, v in meta.items() if k.startswith("division_") and k.split("_")[1].isdigit()}
     odds = {}
     hub = week_hub(lg, last, with_winprob, wp_cache, odds, div_names)
+    inj_rows = weekly.injuries(lg)
     proj_rows, proj_over, proj_under = weekly.vs_projection(lg)
     tr_rows, tr_league = weekly.trends(lg)
     dx = stats.draft_extras(lg)
@@ -261,7 +282,7 @@ def build(league_id, out, with_winprob=True, tabs="", past_sums=None):
                                           {n: stats.week_totals(lg, r) for r, n in lg.team.items()})),
         "trades": ("Trade scorecard", render.trade_cards(stats.trades(lg))),
         "byes": ("Bye week damage", render.bye_table(weekly.byes(lg))),
-        "injuries": ("Injury damage", render.injury_table(weekly.injuries(lg))),
+        "injuries": ("Injury damage", render.injury_table(inj_rows)),
         "ages": ("Age, experience and injury history", '<p class="lede">Who’s old, who’s green, and whose players keep getting hurt.</p>'
                  + render.roster_profile_table(weekly.roster_profile(lg))) if not lg.complete else None,
         "bench": ("Points left on the bench", render.bench_table(stats.bench(lg))),
@@ -324,7 +345,9 @@ def build(league_id, out, with_winprob=True, tabs="", past_sums=None):
         with open(os.path.join(out, "weeks", f"{w}.html"), "w") as f:
             f.write(render.page(f"{lg.name} · Week {w}", "".join(parts)))
     with open(os.path.join(out, "summary.json"), "w") as f:  # this season's totals, for the all-time page
-        json.dump(stats.season_summary(lg), f)
+        summary = stats.season_summary(lg)
+        summary["injuries"] = injury_summary(lg, inj_rows)
+        json.dump(summary, f)
     with open(os.path.join(out, ".nojekyll"), "w"):
         pass
     print(f"built {lg.name} through week {last} -> {out}")
@@ -349,7 +372,7 @@ def alltime_page(name, tabs, sums):
         ("at-standings", "Standings", "Who has won, who has lost, and where everyone finished.",
          ["alltime-standings", "finishes", "champions", "playoff-records"]),
         ("at-rivalries", "Rivalries", "Every manager against every other manager.", ["head-to-head", "rivalries", "streaks"]),
-        ("at-records", "Records", "The best and worst single games and seasons, and who the schedule has favored.", ["record-book", "big-games", "bench-disasters", "alltime-carry", "by-week", "luck"]),
+        ("at-records", "Records", "The best and worst single games and seasons, and who the schedule has favored.", ["record-book", "big-games", "bench-disasters", "alltime-carry", "by-week", "luck", "injury-luck"]),
         ("at-moves", "Roster moves", "Keepers, drafts, trades and the waiver wire across every season.",
          ["keepers", "draft-history", "alltime-trades", "tendencies", "alltime-flex", "alltime-overbids", "loyalty", "moves"]),
     ]
