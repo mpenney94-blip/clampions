@@ -2299,6 +2299,50 @@ def alltime_sections(sums):
                     'injuries = one player’s total cost to one team in one season. Click a manager for each season. Click a column header to sort.</p>')
                    if irows else '<div class="panel muted">No injury data yet.</div>')
 
+    # drafted vs picked up, every season
+    srcs = collections.defaultdict(lambda: {"draft": 0.0, "keeper": 0.0, "waiver": 0.0, "trade": 0.0, "seasons": []})
+    for x in sums:
+        for o, z in (x.get("sources") or {}).items():
+            for k in ("draft", "keeper", "waiver", "trade"):
+                srcs[o][k] += z[k]
+            srcs[o]["seasons"].append((x["season"], z))
+    skinds = [("draft", "Drafted", 1), ("waiver", "Waiver / free agent", 2), ("trade", "Trade", 3)]
+    srows = []
+    for i, o in enumerate(sorted((o for o in owners if o in srcs), key=lambda o: -srcs[o]["draft"] / max(1, sum(srcs[o][k] for k, _, _ in skinds)))):
+        z = srcs[o]
+        tot = sum(z[k] for k, _, _ in skinds) or 1
+        bar = "".join(f'<span style="flex:{z[k] / tot:.4f};background:var(--c{c})" title="{lab}: {z[k]:,.0f} pts ({z[k] / tot:.0%})">'
+                      f'{f"{z[k] / tot:.0%}" if z[k] / tot >= .08 else ""}</span>' for k, lab, c in skinds)
+        det = "".join(
+            f'<tr><td class="muted">{s_}</td>' + "".join(
+                f'<td class="n">{y[k] / max(1, sum(y[q] for q, _, _ in skinds)):.0%}</td>' for k, _, _ in skinds)
+            + f'<td class="n team">{sum(y[k] for k, _, _ in skinds):,.0f}</td><td>'
+            + (f'<b>{esc(y["best"]["waiver"][0])}</b> <span class="muted">{y["best"]["waiver"][1]:.0f}</span>' if y["best"].get("waiver") else '<span class="muted">—</span>')
+            + '</td><td>' + (f'<b>{esc(y["best"]["trade"][0])}</b> <span class="muted">{y["best"]["trade"][1]:.0f}</span>' if y["best"].get("trade") else '<span class="muted">—</span>')
+            + '</td></tr>' for s_, y in sorted(z["seasons"], key=lambda t: t[0], reverse=True))
+        det = (f'<div class="xpin"><table class="picks"><tr><td class="muted">Season</td><td class="n muted">Drafted</td><td class="n muted">Waiver/FA</td>'
+               f'<td class="n muted">Trade</td><td class="n muted">Points</td><td class="muted">Best pickup</td><td class="muted">Best trade add</td></tr>{det}</table></div>')
+        srows.append(f'<tr class="xrow" tabindex="0" role="button" aria-expanded="false" aria-controls="atsrc-{i}">'
+                     f'<td style="white-space:nowrap" data-v="{esc(name[o].lower())}"><span class="chev" aria-hidden="true">▸</span> {who(o)}</td>'
+                     f'<td style="width:30%" data-v="{z["draft"] / tot:.4f}"><div class="stack">{bar}</div></td>'
+                     f'<td class="n" data-v="{z["draft"] / tot:.4f}">{z["draft"]:,.0f}<div class="muted" style="font-size:11px">{z["draft"] / tot:.0%}</div></td>'
+                     f'<td class="n" data-v="{z["keeper"] / tot:.4f}">{z["keeper"]:,.0f}<div class="muted" style="font-size:11px">{z["keeper"] / tot:.0%}</div></td>'
+                     f'<td class="n" data-v="{z["waiver"] / tot:.4f}">{z["waiver"]:,.0f}<div class="muted" style="font-size:11px">{z["waiver"] / tot:.0%}</div></td>'
+                     f'<td class="n" data-v="{z["trade"] / tot:.4f}">{z["trade"]:,.0f}<div class="muted" style="font-size:11px">{z["trade"] / tot:.0%}</div></td>'
+                     f'<td class="n team" data-v="{tot:.1f}">{tot:,.0f}</td></tr>'
+                     f'<tr class="xdetail" id="atsrc-{i}" hidden><td colspan="7">{det}</td></tr>')
+    lt = {k: sum(srcs[o][k] for o in srcs) for k in ("draft", "keeper", "waiver", "trade")}
+    ltot = sum(lt[k] for k, _, _ in skinds) or 1
+    sources_html = (('<div class="panel scroll"><div class="legend">' + "".join(f'<span><i style="background:var(--c{c})"></i>{lab}</span>' for _, lab, c in skinds)
+                     + f'</div><table class="sortable expand"><thead><tr><th>Manager</th><th>Share of starting-lineup points</th><th class="n">Drafted</th>'
+                     f'<th class="n">Keepers</th><th class="n">Waiver/FA</th><th class="n">Trade</th><th class="n">Total</th></tr></thead><tbody>{"".join(srows)}</tbody>'
+                     f'<tfoot><tr class="tot"><td class="muted">League</td><td></td>' + "".join(f'<td class="n">{lt[k] / ltot:.0%}</td>' for k in ("draft", "keeper", "waiver", "trade"))
+                     + '<td></td></tr></tfoot></table></div>'
+                     '<p class="note">Starting-lineup points since 2023 (regular season, this season so far included), credited to how the manager '
+                     'got the player at the time: drafted him (keepers included, also shown on their own), picked him up off waivers or free agency, '
+                     'or traded for him. A drafted player who was dropped and picked back up counts as a pickup. Click a manager for each season, '
+                     'with his best pickup and best trade add. Click a column header to sort.</p>') if srows else '<div class="panel muted">No data yet.</div>')
+
     # flex usage, every season
     fpos = [p for p in ("RB", "WR", "TE", "QB") if any(p in f for x in sums for f in x.get("flex", {}).values())]
     ftot = collections.defaultdict(lambda: collections.defaultdict(lambda: [0, 0.0]))
@@ -2352,7 +2396,7 @@ def alltime_sections(sums):
             ("big-games", "Best single-game performances", big_games_html), ("bench-disasters", "Biggest bench disasters", bench_html),
             ("luck", "All-time luck", luck_html), ("injury-luck", "Injury luck", injury_html), ("streaks", "Streaks", streak_html), ("keepers", "Keepers", keep_html),
             ("draft-history", "Draft history", draft_html), ("alltime-trades", "Most lopsided trades", trade_html),
-            ("tendencies", "Manager tendencies", tendencies), ("alltime-flex", "Flex usage", flex_html), ("alltime-carry", "Who carried each team", carry_html), ("by-week", "By week of the season", by_week_html), ("alltime-overbids", "Waiver overbids", overbids),
+            ("tendencies", "Manager tendencies", tendencies), ("alltime-flex", "Flex usage", flex_html), ("alltime-sources", "Drafted vs. picked up", sources_html), ("alltime-carry", "Who carried each team", carry_html), ("by-week", "By week of the season", by_week_html), ("alltime-overbids", "Waiver overbids", overbids),
             ("loyalty", "Who sticks with their guys", loyalty),
             ("moves", "Best pickups and worst drops", moves)]
 

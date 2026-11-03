@@ -348,6 +348,10 @@ def build(league_id, out, with_winprob=True, tabs="", past_sums=None):
     with open(os.path.join(out, "summary.json"), "w") as f:  # this season's totals, for the all-time page
         summary = stats.season_summary(lg)
         summary["injuries"] = injury_summary(lg, inj_rows)
+        summary["sources"] = {lg.owner[r]: {"draft": round(src[n]["draft"], 1), "keeper": round(src[n]["keeper"], 1),
+                                            "waiver": round(src[n]["waiver"], 1), "trade": round(src[n]["trade"], 1),
+                                            "best": {k: [v[0], round(v[1], 1)] for k, v in src[n]["best"].items()}}
+                              for r, n in lg.team.items() if n in src}
         json.dump(summary, f)
     with open(os.path.join(out, ".nojekyll"), "w"):
         pass
@@ -375,7 +379,7 @@ def alltime_page(name, tabs, sums):
         ("at-rivalries", "Rivalries", "Every manager against every other manager.", ["head-to-head", "rivalries", "streaks"]),
         ("at-records", "Records", "The best and worst single games and seasons, and who the schedule has favored.", ["record-book", "big-games", "bench-disasters", "alltime-carry", "by-week", "luck", "injury-luck"]),
         ("at-moves", "Roster moves", "Keepers, drafts, trades and the waiver wire across every season.",
-         ["keepers", "draft-history", "alltime-trades", "tendencies", "alltime-flex", "alltime-overbids", "loyalty", "moves"]),
+         ["keepers", "draft-history", "alltime-trades", "tendencies", "alltime-flex", "alltime-sources", "alltime-overbids", "loyalty", "moves"]),
     ]
     groups = [(gid, g, blurb, [k for k in keys if k in S]) for gid, g, blurb, keys in groups]
     placed = {k for *_, keys in groups for k in keys}
