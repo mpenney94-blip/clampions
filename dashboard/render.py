@@ -1374,7 +1374,7 @@ def injury_table(rows, min_ppg=8):
     return (f'<div class="panel scroll sortbars">{controls}{legend}<table class="expand"><thead><tr><th></th><th>Team</th><th class="barcell">Points lost to injury</th>'
             f'<th class="n">Missed</th><th class="n">Left hurt</th><th class="n">After the cut</th><th class="n">Total</th><th class="n">Dead starts</th></tr></thead>'
             f'<tbody>{_xrows("inj", rows, cells, detail, 8, data)}</tbody></table></div>'
-            f'<p class="note">Only players averaging {min_ppg}+ points a game count. <b>Missed</b>: he was on the roster but didn’t play while his NFL team did '
+            f'<p class="note">Only players averaging {min_ppg}+ points a game count; a player’s average leaves out games he left hurt. <b>Missed</b>: he was on the roster but didn’t play while his NFL team did '
             '(injury, illness, inactive or suspension), costing his season average. <b>Left hurt</b>: ESPN’s play-by-play logged him '
             '“injured during the play” and he never showed up in a play again or got a “returned to the game” note; the cost is his season average '
             'minus what he’d scored when he went down. <b>After the cut</b>: players the team dropped while hurt (in his last week on the roster he sat out '
