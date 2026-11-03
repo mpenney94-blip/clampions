@@ -1349,7 +1349,7 @@ def injury_table(rows, min_ppg=8):
 
         def since(c):
             g = len(c["games"])
-            bits = [f'{g} game{"s" if g != 1 else ""} missed since' + (" · back now" if c["back"] else "")]
+            bits = [f'{g} game{"s" if g != 1 else ""} after the cut (wk {", ".join(map(str, c["games"]))})' + (" · back now" if c["back"] else "")]
             if c["status"]:
                 bits.append(f'<span class="neg">{esc(c["status"])}{" · " + esc(c["injury"]) if c["injury"] else ""}</span>')
             if c["now"]:
@@ -1360,7 +1360,7 @@ def injury_table(rows, min_ppg=8):
             f'<td class="muted">{since(c)}</td><td class="n team">{c["lost"]:.1f}</td></tr>'
             for c in x["cut"]) + '</table>') if x["cut"] else '<span class="muted">None</span>'
         return (f'<div class="grid2"><div><h3>Missed games</h3>{missed}</div><div><h3>Left a game hurt</h3>{left}</div></div>'
-                f'<div class="grid2" style="margin-top:12px"><div><h3>Dead starts</h3>{dead}</div><div><h3>Dropped while hurt</h3>{cut}</div></div>')
+                f'<div class="grid2" style="margin-top:12px"><div><h3>Dead starts</h3>{dead}</div><div><h3>Dropped while hurt</h3>{cut}{"<p class=muted style=font-size:12px;margin:6px 0 0>Games before the cut are under Missed games and Left a game hurt.</p>" if x["cut"] else ""}</div></div>')
     legend = ('<div class="legend"><span><i style="background:var(--bad)"></i>Missed games</span>'
               '<span><i style="background:var(--c1)"></i>Left a game hurt</span>'
               '<span><i style="background:var(--c4)"></i>After the cut</span></div>')
