@@ -436,11 +436,36 @@ def dropped_hurt(lg, r, ppg, exits, min_ppg=8.0):
     return sorted(out.values(), key=lambda x: x["week"])
 
 
+PRIOR_GAMES = 3  # weight of the preseason projection in a player's injury-table value, in games
+
+
 def injuries(lg, min_ppg=8.0):
     """Points lost to injury: games missed while the player's NFL team played, and games he left hurt and never returned to,
     plus starts wasted on players who didn't play at all, and games missed after the team cut a hurt player."""
-    ppg = _ppg(lg)
     exits = {w: injury_exits(lg, w) for w in lg.weeks}
+    # a player's worth = his average in games he finished: the game he got hurt in drags it down and would hide him
+    ppg, hurt_in = dict(_ppg(lg)), set()
+    rostered = {p for w in lg.weeks for m in lg.matchups[w] for p in m.get("players") or [] if not p.isalpha()}
+    for w in lg.weeks:
+        for p in rostered:
+            if p in lg.played[w] and any(_nfl_team(lg, p, w) in ts and _matches(lg, p, n) for n, ts in exits[w]):
+                hurt_in.add((p, w))
+    # and a few games are a thin sample, so start from his preseason projection (Sleeper's week 1 projection, or his first
+    # projected week) and let real games take over: the projection counts as PRIOR_GAMES games at that rate
+    def preseason(p):
+        for w in lg.weeks:
+            v = lg.proj(w)[0].get(p, 0)
+            if v > 0:
+                return v
+        return None
+    for p in rostered:
+        full = [lg.pts[p].get(w, 0) for w in lg.weeks if p in lg.played[w] and (p, w) not in hurt_in]
+        pre = preseason(p)
+        if pre is None:
+            if full:
+                ppg[p] = sum(full) / len(full)
+            continue
+        ppg[p] = (sum(full) + PRIOR_GAMES * pre) / (len(full) + PRIOR_GAMES)
     out = []
     for r, name in lg.team.items():
         missed, left, dead = [], [], []
@@ -453,7 +478,7 @@ def injuries(lg, min_ppg=8.0):
                         dead.append((w, lg.name_of(p), lg.pos_of(p), "bye" if team in lg.bye.get(w, set()) else "didn’t play"))
                     if v >= min_ppg and team not in lg.bye.get(w, set()):
                         missed.append((w, lg.name_of(p), v))
-                elif v >= min_ppg and not p.isalpha() and any(team in ts and _matches(lg, p, n) for n, ts in exits[w]):
+                elif v >= min_ppg and (p, w) in hurt_in:
                     got = lg.pts[p].get(w, 0)
                     left.append((w, lg.name_of(p), max(0.0, v - got), got, p in m["starters"]))
         cut = dropped_hurt(lg, r, ppg, exits, min_ppg)
