@@ -239,20 +239,54 @@ def signed(v, digits=1):
 
 
 # ---------------------------------------------------------------- tables
-def allplay_table(rows, weeks):
+def week_rank_counts(weeks):
+    """weeks: iterable of {team: score} for one week each. {team: [1st, 2nd, 3rd, last, 2nd-last, 3rd-last]} counts.
+    Ties share the better place (two teams tied for the top both count as 1st)."""
+    out = collections.defaultdict(lambda: [0] * 6)
+    for sc in weeks:
+        vals = list(sc.values())
+        for t, v in sc.items():
+            hi = 1 + sum(1 for u in vals if u > v)
+            lo = 1 + sum(1 for u in vals if u < v)
+            if hi <= 3:
+                out[t][hi - 1] += 1
+            if lo <= 3:
+                out[t][2 + lo] += 1
+    return out
+
+
+def rank_cells(c):
+    """Two table cells: weekly top-3 finishes and bottom-3 finishes, totals with the 1st·2nd·3rd split underneath."""
+    top, bot = sum(c[:3]), sum(c[3:])
+    sub = lambda a: f'<div class="muted" style="font-size:11px;white-space:nowrap">{a[0]}·{a[1]}·{a[2]}</div>'
+    return (f'<td class="n" data-v="{top + c[0] / 10 + c[1] / 100 + c[2] / 1000:.4f}"><b class="pos">{top}</b>{sub(c[:3])}</td>'
+            f'<td class="n" data-v="{bot + c[3] / 10 + c[4] / 100 + c[5] / 1000:.4f}"><b class="neg">{bot}</b>{sub(c[3:])}</td>')
+
+
+RANK_NOTE = ('Top 3 = weeks with one of the league’s three highest scores, with 1st·2nd·3rd underneath; Bottom 3 = weeks with one of the '
+             'three lowest, with last·2nd-last·3rd-last underneath (ties share the better place).')
+
+
+def allplay_table(rows, weeks, ranks=None):
     n = len(weeks)
-    out = ['<div class="panel scroll"><table><thead><tr><th>#</th><th>Team</th><th class="n">All-play</th><th>Win %</th>'
-           '<th class="n">Actual</th><th class="n">Luck</th><th class="n">PF</th><th class="n">PA</th></tr></thead><tbody>']
+    ranks = ranks or {}
+    out = ['<div class="panel scroll"><table class="sortable"><thead><tr><th>#</th><th>Team</th><th class="n">All-play</th><th>Win %</th>'
+           '<th class="n">Actual</th><th class="n">Luck</th><th class="n">PF</th><th class="n">PA</th><th class="n">Top 3</th><th class="n">Bottom 3</th>'
+           '</tr></thead><tbody>']
     for i, r in enumerate(rows, 1):
         luck = r["luck"]
         cls = "pos" if luck >= 0.5 else "neg" if luck <= -0.5 else "muted"
-        out.append(f'<tr><td class="muted">{i}</td><td class="team">{esc(r["team"])}</td><td class="n team">{fmt_record(r["allplay"])}</td>'
-                   f'<td style="white-space:nowrap">{pct_s(r["pct"])} <span class="bar" style="width:{r["pct"] * 90:.0f}px"></span></td>'
-                   f'<td class="n">{fmt_record(r["record"])}</td><td class="n {cls}">{signed(luck)}</td>'
-                   f'<td class="n">{r["pf"]:.1f}</td><td class="n muted">{r["pa"]:.1f}</td></tr>')
+        rec = r["record"]
+        out.append(f'<tr><td class="muted rank">{i}</td><td class="team" data-v="{esc(r["team"].lower())}">{esc(r["team"])}</td>'
+                   f'<td class="n team" data-v="{r["pct"]:.4f}">{fmt_record(r["allplay"])}</td>'
+                   f'<td style="white-space:nowrap" data-v="{r["pct"]:.4f}">{pct_s(r["pct"])} <span class="bar" style="width:{r["pct"] * 90:.0f}px"></span></td>'
+                   f'<td class="n" data-v="{rec[0] + rec[2] / 2 - rec[1] / 1000:.3f}">{fmt_record(rec)}</td><td class="n {cls}" data-v="{luck:.2f}">{signed(luck)}</td>'
+                   f'<td class="n" data-v="{r["pf"]:.1f}">{r["pf"]:.1f}</td><td class="n muted" data-v="{r["pa"]:.1f}">{r["pa"]:.1f}</td>'
+                   f'{rank_cells(ranks.get(r["team"], [0] * 6))}</tr>')
     out.append('</tbody></table></div>')
     out.append(f'<p class="note">All-play = every team’s weekly score played against every other team that week. '
-               f'Luck = actual wins minus expected wins (all-play win % × {n} games): positive means luckier than their scores deserve.</p>')
+               f'Luck = actual wins minus expected wins (all-play win % × {n} games): positive means luckier than their scores deserve. '
+               f'{RANK_NOTE} Click a column header to sort.</p>')
     return "".join(out)
 
 
@@ -1524,6 +1558,14 @@ def alltime_sections(sums):
                      "titles": sum(1 for z in cs if z["finish"] == 1), "last": sum(1 for z in cs if z["finish"] == n_teams),
                      "best": min((z["finish"] for z in cs if z["finish"]), default=None)})
     rows.sort(key=lambda r: (-r["pct"], -r["pf"]))
+    wk_scores = []
+    for x in sums:
+        byw = collections.defaultdict(dict)
+        for w, a, sa, b, sb, pl in x.get("games", []):
+            if not pl:
+                byw[w][a], byw[w][b] = sa, sb
+        wk_scores += list(byw.values())
+    at_ranks = week_rank_counts(wk_scores)
     trs = []
     for r in rows:
         po_pct = r["po"] / r["done"] if r["done"] else 0
@@ -1534,17 +1576,18 @@ def alltime_sections(sums):
                    f'<td class="n" data-v="{po_pct + r["po"] / 100:.4f}">{r["po"]}/{r["done"]} <span class="muted">({po_pct:.0%})</span></td>'
                    f'<td class="n" data-v="{r["titles"]}">{"🏆" * r["titles"] or "<span class=muted>0</span>"}</td>'
                    f'<td class="n" data-v="{r["last"]}">{"💩" * r["last"] or "<span class=muted>0</span>"}</td>'
-                   f'<td class="n" data-v="{-(r["best"] or 99)}">{_ordinal(r["best"]) if r["best"] else "—"}</td></tr>')
+                   f'<td class="n" data-v="{-(r["best"] or 99)}">{_ordinal(r["best"]) if r["best"] else "—"}</td>{rank_cells(at_ranks.get(r["o"], [0] * 6))}</tr>')
     cur = [x for x in sums if not x["complete"]]
     standings = (f'<div class="panel scroll"><table class="sortable"><thead><tr><th>Manager (current team)</th><th class="n">Seasons</th>'
                  '<th class="n">Record</th><th class="n" aria-sort="descending">Win %</th><th class="n">Points for</th><th class="n">Points against</th><th class="n">PPG</th>'
-                 '<th class="n">Playoffs</th><th class="n">Titles</th><th class="n">Last place</th><th class="n">Best finish</th></tr></thead>'
+                 '<th class="n">Playoffs</th><th class="n">Titles</th><th class="n">Last place</th><th class="n">Best finish</th>'
+                 '<th class="n">Top 3 weeks</th><th class="n">Bottom 3 weeks</th></tr></thead>'
                  f'<tbody>{"".join(trs)}</tbody></table></div>'
                  f'<p class="note">Regular-season games only, {seasons[-1]}–{seasons[0]}'
                  + (f' ({cur[0]["season"]} so far, through week {cur[0]["weeks"]})' if cur else "")
                  + '. Playoffs, titles, last places and best finish count finished seasons only. Last place = finished '
                  f'{_ordinal(n_teams)}: lost every game in the toilet bowl. Managers are tracked by Sleeper account, so team renames stay together; '
-                 'hover a name for its old team names. Click a column header to sort.</p>')
+                 f'hover a name for its old team names. {RANK_NOTE} Click a column header to sort.</p>')
 
     # finishes by year
     head = "".join(f'<th class="n">{x["season"]}</th>' for x in sums)

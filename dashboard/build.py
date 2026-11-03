@@ -263,7 +263,8 @@ def build(league_id, out, with_winprob=True, tabs="", past_sums=None):
     S = {k: (t, h) for k, t, h in hub}
     S.update({
         "history": ("Past weeks", week_links),
-        "standings": ("All-play standings", '<p class="lede">How each team would stand if everyone played everyone every week, next to their real record.</p>' + render.allplay_table(ap, lg.weeks)),
+        "standings": ("All-play standings", '<p class="lede">How each team would stand if everyone played everyone every week, next to their real record.</p>' + render.allplay_table(ap, lg.weeks, render.week_rank_counts(
+                         {lg.team[r]: v for r, v in lg.scores(w).items()} for w in lg.weeks))),
         "trends": ("Scoring trends", render.trend_cards(tr_rows, tr_league, lg.weeks)),
         "projections": ("Beating the projections", render.projection_table(proj_rows, proj_over, proj_under, last)),
         "peaks": ("Opponents' career days", '<p class="lede">Did opponents keep having their best game of the year against you?</p>'
