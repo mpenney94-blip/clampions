@@ -82,12 +82,14 @@ and listen for `pageerror`. Run the build without piping its exit code away; an 
 - Cached in `.cache/commentary` (Actions cache) as {paras, facts}. A recap, or a preview of a week already played, is
   written once and kept. The live preview is rewritten when `COMMENTARY_REFRESH=1` (Tuesday and Thursday scheduled runs and
   manual runs); a rewrite gets the earlier column and `_preview_changes` (lineup holes fixed, injuries, flipped favorites)
-  so Thursday can call out what changed since Tuesday. The rivalry column is rewritten only when `RIVALRY_REFRESH=1`
-  (the Tuesday scheduled run). Expected cost about $0.10–0.15 a week.
+  so Thursday can call out what changed since Tuesday. The rivalry column (8–10 paragraphs) is rewritten on the Tuesday
+  scheduled run (`RIVALRY_REFRESH=1`) only once the last one is `RIVALRY_EVERY_DAYS` (55) old, about every two months.
+  Expected cost about $0.10–0.15 a week.
 - To add real-life news, append a dated line to the "Real-life news" section of `dashboard/league_notes.md`.
 - Recap and preview facts also carry optional background (head_to_head, trophy_case, season_habits, recent_form,
-  records_broken) built from the earlier seasons' summary.json (`lg.past_sums`); build_all builds past seasons first so
-  the current season can read them.
+  season_vs_history, records_broken) built from the earlier seasons' summary.json (`lg.past_sums`); build_all builds past seasons first so
+  the current season can read them. season_vs_history is only attached (from week 4) for teams with something notable:
+  a change from the usual or the same old story.
 - The preview's facts include each team's history in that week number of past seasons (`commentary.week_number_facts`:
   record, average vs. the league, rank among his weeks, and flagged notables like a week he has never won).
 

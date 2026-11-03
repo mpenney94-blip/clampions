@@ -5,6 +5,7 @@ otherwise (or if the call fails) a built-in writer does, picking from canned lin
 """
 
 import collections
+import datetime as dt
 import statistics
 import glob
 import hashlib
@@ -60,6 +61,7 @@ def week_facts(lg, w, wp=None, odds_now=None, odds_prev=None):
 
     habits = season_habits(lg, w)
     form = recent_form(lg, w)
+    vs_hist = season_vs_history(lg, w)
 
     def side(r):
         m = ms[r]
@@ -77,7 +79,7 @@ def week_facts(lg, w, wp=None, odds_now=None, odds_prev=None):
             "biggest_flops": [{"player": lg.name_of(p), "points": v, "projected": round(proj.get(p, 0), 1)} for p, v in flops if proj.get(p, 0) - v > 4],
             "started_players_who_did_not_play": empty,
             "win_probability": wpm.get(lg.team[r]),
-            "season_habits": habits.get(r), "recent_form": form.get(r),
+            "season_habits": habits.get(r), "recent_form": form.get(r), "season_vs_history": vs_hist.get(r),
         }
 
     games = []
@@ -328,6 +330,85 @@ def recent_form(lg, through):
     return out
 
 
+def season_vs_history(lg, through):
+    """{roster: this season so far against the manager's earlier seasons}, only for teams where something stands out: a big
+    change from the usual (a historically bad team winning, a contender collapsing, a best or worst start) or the same old
+    story (still bad, still good, back at the bottom). Other teams get nothing."""
+    weeks = [w for w in lg.weeks if w <= through]
+    past = [x for x in _past(lg) if x.get("teams")]
+    if len(weeks) < 4 or not past:  # three games is too small a sample to call anything a trend
+        return {}
+    n_wk = len(weeks)
+    rec = {r: [0, 0, 0] for r in lg.team}
+    pf = collections.Counter()
+    for w in weeks:
+        sc, opp = lg.scores(w), lg.opponent(w)
+        for r, o in opp.items():
+            rec[r][0 if sc[r] > sc[o] else 1 if sc[r] < sc[o] else 2] += 1
+            pf[r] += sc[r]
+    pct = lambda wl: (wl[0] + wl[2] / 2) / max(1, sum(wl))
+    order = sorted(lg.team, key=lambda r: (-pct(rec[r]), -pf[r]))
+    pf_rank = {r: i for i, r in enumerate(sorted(lg.team, key=lambda r: -pf[r]), 1)}
+    out = {}
+    for r in lg.team:
+        o = lg.owner[r]
+        mine = [x for x in past if o in x["teams"]]
+        if not mine:
+            continue
+        his = _his(lg, r)
+        # record through the same number of weeks in each earlier season
+        same = {}
+        for x in mine:
+            wl = [0, 0, 0]
+            for w, a, sa, b, sb, pl in x.get("games", []):
+                if pl or w > max(weeks) or o not in (a, b):
+                    continue
+                m, t = (sa, sb) if a == o else (sb, sa)
+                wl[0 if m > t else 1 if m < t else 2] += 1
+            same[x["season"]] = wl
+        tot = [sum(x["teams"][o][k] for x in mine) for k in ("wins", "losses", "ties")]
+        done = [x for x in mine if x.get("complete")]
+        finishes = [(x["season"], x["teams"][o]["finish"]) for x in sorted(done, key=lambda x: x["season"]) if x["teams"][o].get("finish")]
+        trips = sum(1 for x in done if x["teams"][o].get("playoffs"))
+        past_rank = [sorted(x["teams"], key=lambda u: -x["teams"][u]["pf"]).index(o) + 1 for x in done]
+        now = pct(rec[r])
+        hist = pct(tot)
+        notable = []
+        if len(same) >= 2 and all(now > pct(v) for v in same.values()):
+            notable.append(f"his best record through {n_wk} weeks of any season since 2023".replace("his", his))
+        if len(same) >= 2 and all(now < pct(v) for v in same.values()):
+            notable.append(f"his worst record through {n_wk} weeks of any season since 2023".replace("his", his))
+        if now - hist >= .25:
+            notable.append(f"winning far more than usual: {now:.0%} this season vs {hist:.0%} all-time")
+        if hist - now >= .25:
+            notable.append(f"winning far less than usual: {now:.0%} this season vs {hist:.0%} all-time")
+        if past_rank and pf_rank[r] < min(past_rank):
+            notable.append(f"{_ordinal(pf_rank[r])} in points, "
+                           f"better than any of {his} past seasons (best before: {_ordinal(min(past_rank))})")
+        if done and trips == 0 and order.index(r) < lg.playoff_teams:
+            notable.append(f"has never made the playoffs, and is currently {_ordinal(order.index(r) + 1)} in the standings")
+        if done and finishes and min(f for _, f in finishes) <= 2 and order.index(r) >= len(lg.team) - 3:
+            notable.append(f"a past finalist now near the bottom of the standings")
+        # same old story
+        n_teams = len(lg.team)
+        lasts = [k for k, f in finishes if f == n_teams]
+        if hist <= .40 and now <= .40:
+            notable.append(f"same old story: {now:.0%} this season after {hist:.0%} all-time")
+        if hist >= .60 and now >= .60:
+            notable.append(f"same old story, the good kind: {now:.0%} this season after {hist:.0%} all-time")
+        if lasts and order.index(r) >= n_teams - 2:
+            notable.append(f"finished last in {', '.join(lasts)} and is near the bottom again")
+        if not notable:
+            continue  # nothing new or same-old worth saying about this team this week
+        out[r] = {"this_season": f"{rec[r][0]}-{rec[r][1]}" + (f"-{rec[r][2]}" if rec[r][2] else "")
+                                 + f", {pf[r] / n_wk:.1f} a game (#{pf_rank[r]} in points), #{order.index(r) + 1} by record",
+                  "all_time_before_this_season": f"{tot[0]}-{tot[1]}" + (f"-{tot[2]}" if tot[2] else "") + f" ({hist:.0%})"
+                                                 + (f", playoffs {trips} of {len(done)}, finishes " + ", ".join(f"{k}: {_ordinal(f)}" for k, f in finishes) if done else ""),
+                  "record_through_same_week": ", ".join(f"{k}: {v[0]}-{v[1]}" for k, v in sorted(same.items())),
+                  "notable": notable}
+    return out
+
+
 def records_broken(lg, w):
     """Notable records set in week w: team scores (season and all-time), single-game player scores, bench disasters."""
     out = []
@@ -398,6 +479,7 @@ def preview_facts(lg, w, odds=None, min_ppg=8.0):
 
     habits = season_habits(lg, w - 1)
     form = recent_form(lg, w - 1)
+    vs_hist = season_vs_history(lg, w - 1)
     out = []
     for g in games:
         sides = []
@@ -413,7 +495,8 @@ def preview_facts(lg, w, odds=None, min_ppg=8.0):
                           "division": lg.division.get(rid[s["team"]]),
                           "history_in_week_number": week_number_facts(lg, w, rid[s["team"]]),
                           "trophy_case": trophy_case(lg, rid[s["team"]]),
-                          "season_habits": habits.get(rid[s["team"]]), "recent_form": form.get(rid[s["team"]])})
+                          "season_habits": habits.get(rid[s["team"]]), "recent_form": form.get(rid[s["team"]]),
+                          "season_vs_history": vs_hist.get(rid[s["team"]])})
         same_div = sides[0]["division"] is not None and sides[0]["division"] == sides[1]["division"]
         out.append({"favorite": sides[0], "underdog": sides[1], "favorite_win_chance": _p(g["p"]),
                     "spread": round(g["spread"], 1), "division_game": same_div,
@@ -452,7 +535,8 @@ def _claude(kind, facts):
                           "the playoff stakes (who is desperate, who is coasting, who is cooked). Each team's history_in_week_number is how its "
                           "manager has done in this same week of past seasons; work in a couple of its notable items (a week the manager has never "
                           "won, a best or worst scoring week of the year) where they add to the trash talk.",
-               "rivalry": "Write an all-time rivalries column for the league's history page. Roast the managers who keep losing to the same "
+               "rivalry": "This column only runs every couple of months, so make it longer than the weekly ones: 8 to 10 paragraphs "
+                          "(this overrides the usual length). Write an all-time rivalries column for the league's history page. Roast the managers who keep losing to the same "
                           "person, rub in the most one-sided head-to-head records, hype the dead-even rivalries, and work in playoff "
                           "meetings and titles where they make it sting. Team names in the facts are each manager's current team name.",
                }[kind]
@@ -462,9 +546,10 @@ def _claude(kind, facts):
                     "(a manager who finally fixed a lineup hole, one who still hasn't, injury news, a flipped favorite). If nothing "
                     "much changed, you can needle the managers who still haven't touched their lineups.")
         if kind in ("recap", "preview"):
-            ask += (" Background facts (head_to_head, trophy_case, season_habits, recent_form, history_in_week_number) are optional "
-                    "colour: work in one or two when they are genuinely interesting or sharpen a joke this week, and skip the rest - never "
-                    "recite stats. If records_broken has anything, give it a mention. Past punishments in the league notes are fair game "
+            ask += (" Background facts (head_to_head, trophy_case, season_habits, recent_form, season_vs_history, history_in_week_number) "
+                    "are optional colour: work in one or two when they are genuinely interesting or sharpen a joke this week, and skip the "
+                    "rest - never recite stats. season_vs_history notables are good for giving a historically bad team its flowers when it's "
+                    "finally good (or burying a usual contender who's collapsing). If records_broken has anything, give it a mention. Past punishments in the league notes are fair game "
                     "when a trophy case shows a last place.")
         resp = client.beta.messages.create(
             model=MODEL, max_tokens=16000, betas=["server-side-fallback-2026-07-01"], fallbacks="default",
@@ -591,6 +676,15 @@ def _rivalry_lines(f, rnd):
     return out
 
 
+RIVALRY_EVERY_DAYS = 55  # about two months: every 8th weekly Tuesday run
+
+
+def _load_meta(path):
+    with open(path) as f:
+        d = json.load(f)
+    return d if isinstance(d, dict) else {}
+
+
 def _load(path):
     """(paragraphs, facts) from a cached column; older cache files hold just the paragraphs."""
     with open(path) as f:
@@ -642,8 +736,13 @@ def write(kind, facts, use_claude=True, final=False):
     key = hashlib.sha256(json.dumps([MODEL, SYSTEM, kind, facts], sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:24]
     path = os.path.join(CACHE, f"{kind}-{facts['week']}-{key}.json")
     paras = None
-    flag = "RIVALRY_REFRESH" if kind == "rivalry" else "COMMENTARY_REFRESH"
-    keep = kind == "recap" or final or os.environ.get(flag) != "1"
+    keep = kind == "recap" or final or os.environ.get("COMMENTARY_REFRESH") != "1"
+    if kind == "rivalry":
+        # the all-time column is rewritten on a Tuesday run once the last one is RIVALRY_EVERY_DAYS old (every 8th Tuesday)
+        done = sorted(glob.glob(os.path.join(CACHE, f"{kind}-{facts['week']}-*.json")), key=os.path.getmtime)
+        written = _load_meta(done[-1]).get("written") if done else None
+        age = (dt.datetime.now(dt.timezone.utc) - dt.datetime.fromisoformat(written)).days if written else None
+        keep = os.environ.get("RIVALRY_REFRESH") != "1" or (age is not None and age < RIVALRY_EVERY_DAYS)
     if use_claude and keep and not os.path.exists(path):
         # reuse the latest column written for this week, even if the stats behind it have shifted since.
         # Only Claude-written seasons are cached, so no other season matches.
@@ -666,7 +765,7 @@ def write(kind, facts, use_claude=True, final=False):
         if paras:
             os.makedirs(CACHE, exist_ok=True)
             with open(path, "w") as f:
-                json.dump({"paras": paras, "facts": facts}, f, ensure_ascii=False)
+                json.dump({"paras": paras, "facts": facts, "written": dt.datetime.now(dt.timezone.utc).isoformat()}, f, ensure_ascii=False)
     by = "Claude"
     if not paras:
         rnd = random.Random(f"{kind}-{facts['week']}")
