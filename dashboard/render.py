@@ -380,6 +380,61 @@ def flex_table(rows, weeks):
             f'(week columns sort by that week’s flex points).</p>')
 
 
+def fmt_dur(secs):
+    secs = max(0, secs)
+    if secs < 90:
+        return f"{secs:.0f} second{'s' if round(secs) != 1 else ''}"
+    if secs < 5400:
+        return f"{secs / 60:.0f} minutes"
+    if secs < 48 * 3600:
+        return f"{secs / 3600:.0f} hours"
+    if secs < 21 * 86400:
+        return f"{secs / 86400:.0f} days"
+    return f"{secs / 604800:.0f} weeks"
+
+
+def churn_html(c, team, season=False, n=10):
+    """Roster churn lists. c: {"draft_cuts", "quick_cuts", "longest_held", "repeat_adds", "travel"}; team(row) -> team html;
+    season=True adds the season to each row (all-time)."""
+    def ssn(x):
+        return f'<span class="muted">{x["season"]} · </span>' if season else ""
+
+    def lst(title, cls, rows, cells, empty):
+        body = "".join(f'<tr><td class="muted">{i}</td>{cells(x)}</tr>' for i, x in enumerate(rows[:n], 1))
+        return (f'<div class="panel scroll"><h3 class="{cls}">{title}</h3>'
+                + (f'<table>{body}</table>' if body else f'<p class="muted">{empty}</p>') + '</div>')
+
+    def who_cell(x):
+        return f'<td><b>{esc(x["player"])}</b> <span class="muted">{x["pos"] or ""}</span><div style="font-size:12px">{ssn(x)}{team(x)}</div></td>'
+
+    def scored(x):
+        return (f'{x["games"]} game{"s" if x["games"] != 1 else ""}, {x["pts"]:.1f} pts' if x["games"] else "never played for him")
+
+    draft = lst("Quickest cuts after the draft", "neg", c["draft_cuts"],
+                lambda x: who_cell(x) + f'<td class="n team">{fmt_dur(x["secs"])}<div class="muted" style="font-size:12px">{scored(x)}</div></td>',
+                "Nobody cut a draft pick yet.")
+    quick = lst("Shortest stays", "neg", c["quick_cuts"],
+                lambda x: who_cell(x) + f'<td class="n team">{fmt_dur(x["secs"])}<div class="muted" style="font-size:12px">added wk {x["start_wk"]} · {scored(x)}</div></td>',
+                "No pickups cut yet.")
+    held = lst("Longest-held pickups", "pos", c["longest_held"],
+               lambda x: who_cell(x) + f'<td class="n team">{fmt_dur(x["secs"])}{(" (rest of season)" if x.get("season_over") else " and counting") if x.get("ongoing") else ""}'
+                                       f'<div class="muted" style="font-size:12px">added wk {x["start_wk"]} · {scored(x)}</div></td>',
+               "No pickups yet.")
+    rep = lst("Can’t quit him", "", c["repeat_adds"],
+              lambda x: who_cell(x) + f'<td class="n team">{x["adds"]} adds</td>', "Nobody has added the same player twice.")
+    trav = lst("Most teams", "", c["travel"],
+               lambda x: f'<td><b>{esc(x["player"])}</b> <span class="muted">{x["pos"] or ""}</span>'
+                         f'<div style="font-size:12px">{" → ".join(x["path"])}</div></td><td class="n team">{x["n"]} teams</td>',
+               "Nobody has moved around yet.")
+    return (f'<div class="grid2">{draft}{quick}{held}{rep}</div><div style="margin-top:14px">{trav}</div>'
+            '<p class="note">Built from Sleeper’s transaction timestamps, so stays are measured to the second. Quickest cuts after the '
+            'draft = drafted players dropped soonest after the draft ended. Shortest stays = waiver and free-agent adds dropped fastest '
+            '(games and points while on that roster). Longest-held pickups = waiver and free-agent adds kept the longest, still there '
+            'counts to today. Can’t quit him = the same player added by the same team again and again. Most teams = players who have '
+            'been on the most different rosters (traded players included; kickers and defenses left out, since everyone streams them)'
+            + (', across every season since 2023.' if season else '.') + '</p>')
+
+
 def trade_cards(trades):
     if not trades:
         return '<div class="panel muted">No trades yet.</div>'
@@ -2353,6 +2408,27 @@ def alltime_sections(sums):
                      'the most starting-lineup points one such player scored for him in a single season. Click a manager for each season. '
                      'Click a column header to sort.</p>') if srows else '<div class="panel muted">No data yet.</div>')
 
+    # roster churn, every season
+    allc = {k: [] for k in ("draft_cuts", "quick_cuts", "longest_held", "repeat_adds")}
+    trips = collections.defaultdict(lambda: {"player": "", "pos": "", "stops": []})
+    for x in sorted(sums, key=lambda x: x["season"]):
+        c = x.get("churn") or {}
+        for k in allc:
+            allc[k] += [dict(r, season=x["season"]) for r in c.get(k, [])]
+        for pid, v in (c.get("travel") or {}).items():
+            t = trips[pid]
+            t["player"], t["pos"] = v["player"], v["pos"]
+            for o in v["owners"]:
+                if not t["stops"] or t["stops"][-1] != o:
+                    t["stops"].append(o)
+    allc["draft_cuts"].sort(key=lambda r: r["secs"])
+    allc["quick_cuts"].sort(key=lambda r: r["secs"])
+    allc["longest_held"].sort(key=lambda r: (-(r["secs"] // 86400), -r["pts"]))
+    allc["repeat_adds"].sort(key=lambda r: -r["adds"])
+    allc["travel"] = sorted(({"player": t["player"], "pos": t["pos"], "n": len(set(t["stops"])),
+                              "path": [esc(name.get(o, "?")) for o in t["stops"]]} for t in trips.values()), key=lambda t: -t["n"])
+    churn_at = churn_html(allc, lambda r: who(r["owner"], r.get("team")), season=True) if any(allc.values()) else '<div class="panel muted">No data yet.</div>'
+
     # flex usage, every season
     fpos = [p for p in ("RB", "WR", "TE", "QB") if any(p in f for x in sums for f in x.get("flex", {}).values())]
     ftot = collections.defaultdict(lambda: collections.defaultdict(lambda: [0, 0.0]))
@@ -2408,7 +2484,7 @@ def alltime_sections(sums):
             ("draft-history", "Draft history", draft_html), ("alltime-trades", "Most lopsided trades", trade_html),
             ("tendencies", "Manager tendencies", tendencies), ("alltime-flex", "Flex usage", flex_html), ("alltime-sources", "Drafted vs. picked up", sources_html), ("alltime-carry", "Who carried each team", carry_html), ("by-week", "By week of the season", by_week_html), ("alltime-overbids", "Waiver overbids", overbids),
             ("loyalty", "Who sticks with their guys", loyalty),
-            ("moves", "Best pickups and worst drops", moves)]
+            ("moves", "Best pickups and worst drops", moves), ("alltime-churn", "Roster churn", churn_at)]
 
 
 def rivalry_facts(sums):

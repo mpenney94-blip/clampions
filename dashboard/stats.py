@@ -59,6 +59,7 @@ class League:
             self.transactions += [dict(t, leg=w) for t in c.transactions(league_id, w)]  # includes failed waiver claims
         drafts = c.league_drafts(league_id)
         self.picks = c.draft_picks(drafts[0]["draft_id"]) if drafts else []
+        self.draft_time = (drafts[0].get("last_picked") or drafts[0].get("start_time") or 0) / 1000 if drafts else 0
         self._kickoffs = {}
         st_ = self.info["settings"]
         self.playoff_teams = st_.get("playoff_teams") or 0
@@ -224,6 +225,67 @@ def pickups(lg):
                         "traded_to": lg.team.get((traded.get("adds") or {}).get(pid)) if traded else None,
                         "after_trade": after})
     return out
+
+
+def stints(lg):
+    """Every stretch a player spent on a roster this season: {"owner", "rid", "pid", "how" (draft/waiver/free_agent/trade),
+    "start", "end" (unix seconds; end None = still there / season over), "ended" (drop/trade/None)}. Draft-day stints start
+    when the draft finished. Transactions carry exact timestamps, so short stays are measured to the hour."""
+    events = []  # (time, order, kind, roster, pid, how)
+    for p in lg.picks:
+        if p.get("roster_id"):
+            events.append((lg.draft_time, 0, "add", p["roster_id"], p["player_id"], "draft"))
+    for t in lg.transactions:
+        if t["status"] != "complete":
+            continue
+        ts = t["status_updated"] / 1000
+        for pid, r in (t.get("drops") or {}).items():
+            events.append((ts, 1, "drop", r, pid, t["type"]))
+        for pid, r in (t.get("adds") or {}).items():
+            events.append((ts, 2, "add", r, pid, t["type"]))
+    open_, out = {}, []
+    for ts, _, kind, r, pid, how in sorted(events):
+        key = (r, pid)
+        if kind == "add":
+            if key not in open_:
+                open_[key] = {"rid": r, "owner": lg.owner.get(r), "pid": pid, "how": how, "start": ts, "end": None, "ended": None}
+        elif key in open_:
+            st_ = open_.pop(key)
+            st_["end"], st_["ended"] = ts, "trade" if how == "trade" else "drop"
+            out.append(st_)
+    out += list(open_.values())
+    return out
+
+
+def churn(lg, top=10):
+    """Roster churn lists for one season (see stints)."""
+    ss = stints(lg)
+    end_of = (lg.kickoffs(lg.weeks[-1])[1] + 4 * 3600) if lg.complete and lg.weeks else dt.datetime.now(dt.timezone.utc).timestamp()
+    on = {(m["roster_id"], w): set(m.get("players") or []) for w in lg.weeks for m in lg.matchups[w]}
+
+    def row(x):
+        secs = max(0, (x["end"] or end_of) - x["start"])
+        w0 = lg.first_week_after(x["start"])
+        w1 = lg.first_week_after(x["end"]) if x["end"] else 99  # first week he was gone for
+        weeks = [w for w in lg.weeks if w0 <= w < w1 and x["pid"] in on.get((x["rid"], w), ())]
+        pts = sum(lg.pts.get(x["pid"], {}).get(w, 0) for w in weeks)
+        return {"owner": x["owner"], "team": lg.team.get(x["rid"]), "player": lg.name_of(x["pid"]), "pos": lg.pos_of(x["pid"]),
+                "secs": round(secs), "games": len(weeks), "pts": round(pts, 1), "start_wk": w0, "ongoing": x["end"] is None,
+                "season_over": lg.complete}
+
+    draft_cuts = sorted((row(x) for x in ss if x["how"] == "draft" and x["ended"] == "drop"), key=lambda r: r["secs"])[:top]
+    quick = sorted((row(x) for x in ss if x["how"] in ("waiver", "free_agent") and x["ended"] == "drop"), key=lambda r: r["secs"])[:top]
+    held = sorted((row(x) for x in ss if x["how"] in ("waiver", "free_agent")), key=lambda r: (-(r["secs"] // 86400), -r["pts"]))[:top]
+    adds = collections.Counter((x["owner"], x["pid"]) for x in ss if x["how"] in ("waiver", "free_agent"))
+    repeat = [{"owner": o, "team": next((lg.team[r] for r in lg.team if lg.owner[r] == o), None), "player": lg.name_of(p),
+               "pos": lg.pos_of(p), "adds": n} for (o, p), n in adds.most_common() if n >= 2][:top]
+    teams = collections.defaultdict(list)
+    for x in sorted(ss, key=lambda x: x["start"]):
+        if not teams[x["pid"]] or teams[x["pid"]][-1] != x["owner"]:
+            teams[x["pid"]].append(x["owner"])
+    travel = {p: {"player": lg.name_of(p), "pos": lg.pos_of(p), "owners": os_} for p, os_ in teams.items()
+              if len(set(os_)) >= 2 and lg.pos_of(p) not in ("K", "DEF")}  # streamed kickers and defenses would swamp it
+    return {"draft_cuts": draft_cuts, "quick_cuts": quick, "longest_held": held, "repeat_adds": repeat, "travel": travel}
 
 
 def waiver_wars(lg):
@@ -829,6 +891,7 @@ def season_summary(lg):
         "season": lg.season, "complete": lg.complete, "weeks": len(lg.weeks), "playoff_teams": lg.playoff_teams, "teams": teams,
         "keepers": keepers, "trades": trade_rows, "games": games, "rostered": rostered,
         "big_games": big_games, "bench_weeks": bench_weeks, "startsit": start_sit(lg),
+        "churn": churn(lg),
         "flex": {lg.owner[r]: _flex_totals(rows) for r, rows in flex_usage(lg).items()}, "lineups": score_lineups(lg),
         "draft": [{"owner": by_name.get(z["team"]), "team": z["team"], "round": z["round"], "pick": z["pick"], "player": z["player"],
                    "pos": z["pos"], "pts": round(z["pts"], 1), "value": round(z["value"], 1), "keeper": z["keeper"]} for z in draft(lg)],
