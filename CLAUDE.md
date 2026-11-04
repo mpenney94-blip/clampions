@@ -89,6 +89,8 @@ and listen for `pageerror`. Run the build without piping its exit code away; an 
 - Recap and preview facts carry the week's trades (`commentary.trade_facts`: trades_this_week with season averages and
   projections or debut games, plus lopsided_trade_so_far for an older trade one side is clearly winning), and new trades
   show up in the Thursday preview's changes list.
+- Team renames: Sleeper keeps no name history, so `commentary.team_name_log` keeps one in `.cache/commentary/team-names-<league>.json`
+  (week a new name was first seen); recap and preview get team_renames_this_week, and trophy_case lists past season names.
 - Recap and preview facts also carry optional background (head_to_head, trophy_case, season_habits, recent_form,
   season_vs_history, records_broken) built from the earlier seasons' summary.json (`lg.past_sums`); build_all builds past seasons first so
   the current season can read them. season_vs_history is only attached (from week 4) for teams with something notable:
