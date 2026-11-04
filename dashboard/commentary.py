@@ -98,6 +98,7 @@ def week_facts(lg, w, wp=None, odds_now=None, odds_prev=None):
         "awards": {k: [v[0], round(v[1], 2) if isinstance(v[1], float) else v[1], v[2]] for k, v in aw.items()},
         "records_broken": records_broken(lg, w),
         **trade_facts(lg, w, "recap"),
+        **({"team_renames_this_week": rename_facts(lg, w)} if rename_facts(lg, w) else {}),
     }
     if odds_now and odds_prev:
         prev = {x["team"]: x["playoffs"] for x in odds_prev}
@@ -275,6 +276,8 @@ def trophy_case(lg, r):
            "finishes": ", ".join(f"{s_}: {z.get('finish')}" for s_, z in sorted(seasons))}
     if seconds:
         out["runner_up"] = seconds
+    names = [f"{x['season']}: {x['teams'][o]['team'].strip()}" for x in sorted(_past(lg), key=lambda x: x["season"]) if o in x["teams"]]
+    out["past_team_names"] = names
     return out
 
 
@@ -415,6 +418,42 @@ def _trade_list(lg):
     return [(lg.first_week_after(t["status_updated"] / 1000), t)
             for t in sorted((t for t in lg.transactions if t["type"] == "trade" and t["status"] == "complete"),
                             key=lambda t: t["status_updated"])]
+
+
+def team_name_log(lg):
+    """{owner: [[name, week first seen]]}, kept next to the cached columns. Sleeper has no history of team names, so each
+    build of the current season notes any manager whose name differs from the last one seen, against the coming week."""
+    if "_name_log" in lg.__dict__:
+        return lg._name_log
+    path = os.path.join(CACHE, f"team-names-{lg.id}.json")
+    log = {}
+    if os.path.exists(path):
+        with open(path) as f:
+            log = json.load(f)
+    changed = False
+    for r, name in lg.team.items():
+        o = lg.owner[r]
+        if not log.get(o) or log[o][-1][0] != name:
+            log.setdefault(o, []).append([name, lg.next_week if log.get(o) else 0])  # week 0 = first seen, not a rename
+            changed = True
+    if changed and not lg.complete:
+        os.makedirs(CACHE, exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(log, f, ensure_ascii=False)
+        os.replace(tmp, path)
+    lg._name_log = log
+    return log
+
+
+def rename_facts(lg, w):
+    """Renames first seen going into week w: ["Old Name is now New Name"]."""
+    out = []
+    for o, names in team_name_log(lg).items():
+        for i in range(1, len(names)):
+            if names[i][1] == w:
+                out.append(f"{names[i - 1][0]} is now {names[i][0]}")
+    return out
 
 
 def trade_facts(lg, w, kind):
@@ -563,7 +602,8 @@ def preview_facts(lg, w, odds=None, min_ppg=8.0):
                     "head_to_head": head_to_head(lg, rid[sides[0]["team"]], rid[sides[1]["team"]], w)})
     left = [x for x in lg.reg_weeks if x >= w]
     return {"week": w, "league": lg.name, "regular_season_weeks_left_including_this_one": len(left),
-            "playoff_teams": lg.playoff_teams, "games_closest_first": out, **trade_facts(lg, w, "preview")}
+            "playoff_teams": lg.playoff_teams, "games_closest_first": out, **trade_facts(lg, w, "preview"),
+            **({"team_renames_this_week": rename_facts(lg, w)} if rename_facts(lg, w) else {})}
 
 
 # ---------------------------------------------------------------- Claude writer
@@ -605,6 +645,9 @@ def _claude(kind, facts):
                     "Write a fresh column rather than repeating its jokes, and call out what changed since then where it's worth it "
                     "(a manager who finally fixed a lineup hole, one who still hasn't, injury news, a flipped favorite). If nothing "
                     "much changed, you can needle the managers who still haven't touched their lineups.")
+        if kind in ("recap", "preview") and facts.get("team_renames_this_week"):
+            ask += (" Someone changed his team name this week (team_renames_this_week): roast the new name or what it says about "
+                    "his season.")
         if kind in ("recap", "preview") and facts.get("trades_this_week"):
             ask += (" There were trades this week (trades_this_week): give them a mention - who won on paper, who's panicking or "
                     "going all in" + (", and how the new arrivals did in their debuts." if kind == "recap" else "."))
@@ -766,6 +809,8 @@ def _preview_changes(old, new):
         return out
     a, b = sides(old), sides(new)
     out = []
+    for x in set(new.get("team_renames_this_week") or []) - set(old.get("team_renames_this_week") or []):
+        out.append(f"team renamed since the earlier column: {x}")
     seen = {json.dumps(x, sort_keys=True) for x in old.get("trades_this_week") or []}
     for x in new.get("trades_this_week") or []:
         if json.dumps(x, sort_keys=True) not in seen:
