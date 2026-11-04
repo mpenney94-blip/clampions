@@ -97,6 +97,7 @@ def week_facts(lg, w, wp=None, odds_now=None, odds_prev=None):
         "games_closest_first": games,
         "awards": {k: [v[0], round(v[1], 2) if isinstance(v[1], float) else v[1], v[2]] for k, v in aw.items()},
         "records_broken": records_broken(lg, w),
+        **trade_facts(lg, w, "recap"),
     }
     if odds_now and odds_prev:
         prev = {x["team"]: x["playoffs"] for x in odds_prev}
@@ -409,6 +410,65 @@ def season_vs_history(lg, through):
     return out
 
 
+def _trade_list(lg):
+    """Completed trades: (effective week, transaction), oldest first."""
+    return [(lg.first_week_after(t["status_updated"] / 1000), t)
+            for t in sorted((t for t in lg.transactions if t["type"] == "trade" and t["status"] == "complete"),
+                            key=lambda t: t["status_updated"])]
+
+
+def trade_facts(lg, w, kind):
+    """Trades for the columns. kind="preview": trades taking effect in week w (made since the last games), with each player's
+    season average and week-w projection. kind="recap": trades that took effect in week w and how the players did in
+    their first game for their new teams. Plus, at most one older trade where one side is clearly winning so far."""
+    ppg = weekly._ppg(lg)
+    proj = lg.proj(w)[0] if kind == "preview" else {}
+    starters = {m["roster_id"]: set(m["starters"]) for m in lg.matchups.get(w, [])} if kind == "recap" else {}
+    out = {}
+    fresh = []
+    for eff, t in _trade_list(lg):
+        if eff != w:
+            continue
+        sides = []
+        for r in t["roster_ids"]:
+            got = []
+            for p, rr in (t.get("adds") or {}).items():
+                if rr != r:
+                    continue
+                g = {"player": lg.name_of(p), "pos": lg.pos_of(p), "season_avg": round(ppg.get(p, 0), 1)}
+                if kind == "preview":
+                    g["projected_this_week"] = round(proj.get(p, 0), 1)
+                else:
+                    g["debut"] = (f"{lg.pts.get(p, {}).get(w, 0):.1f}" + (" as a starter" if p in starters.get(r, ()) else " on the bench")
+                                  if p in lg.played[w] else "didn't play")
+                got.append(g)
+            picks = [f"{dp['season']} round {dp['round']} pick" for dp in (t.get("draft_picks") or []) if dp.get("owner_id") == r]
+            sides.append({"team": lg.team[r], "got": got, "draft_picks_got": picks})
+        fresh.append({"sides": sides})
+    if fresh:
+        out["trades_this_week"] = fresh
+    # an older trade that's clearly one-sided so far
+    through = w - 1 if kind == "preview" else w
+    best = None
+    for eff, t in _trade_list(lg):
+        weeks = [x for x in lg.weeks if eff <= x <= through]
+        if eff >= w or len(weeks) < 3:
+            continue
+        tot = {}
+        for r in t["roster_ids"]:
+            tot[r] = sum(lg.pts.get(p, {}).get(x, 0) for p, rr in (t.get("adds") or {}).items() if rr == r for x in weeks)
+        if len(tot) != 2:
+            continue
+        (a, va), (b, vb) = sorted(tot.items(), key=lambda kv: -kv[1])
+        if va - vb >= 40 and (best is None or va - vb > best[0]):
+            got = lambda r: ", ".join(lg.name_of(p) for p, rr in (t.get("adds") or {}).items() if rr == r) or "draft picks"
+            best = (va - vb, f"week {eff} trade: {lg.team[a]} got {got(a)} ({va:.1f} pts since), {lg.team[b]} got {got(b)} "
+                             f"({vb:.1f} pts since), {len(weeks)} weeks in")
+    if best:
+        out["lopsided_trade_so_far"] = best[1]
+    return out
+
+
 def records_broken(lg, w):
     """Notable records set in week w: team scores (season and all-time), single-game player scores, bench disasters."""
     out = []
@@ -503,7 +563,7 @@ def preview_facts(lg, w, odds=None, min_ppg=8.0):
                     "head_to_head": head_to_head(lg, rid[sides[0]["team"]], rid[sides[1]["team"]], w)})
     left = [x for x in lg.reg_weeks if x >= w]
     return {"week": w, "league": lg.name, "regular_season_weeks_left_including_this_one": len(left),
-            "playoff_teams": lg.playoff_teams, "games_closest_first": out}
+            "playoff_teams": lg.playoff_teams, "games_closest_first": out, **trade_facts(lg, w, "preview")}
 
 
 # ---------------------------------------------------------------- Claude writer
@@ -545,10 +605,13 @@ def _claude(kind, facts):
                     "Write a fresh column rather than repeating its jokes, and call out what changed since then where it's worth it "
                     "(a manager who finally fixed a lineup hole, one who still hasn't, injury news, a flipped favorite). If nothing "
                     "much changed, you can needle the managers who still haven't touched their lineups.")
+        if kind in ("recap", "preview") and facts.get("trades_this_week"):
+            ask += (" There were trades this week (trades_this_week): give them a mention - who won on paper, who's panicking or "
+                    "going all in" + (", and how the new arrivals did in their debuts." if kind == "recap" else "."))
         if kind in ("recap", "preview"):
             ask += (" Background facts (head_to_head, trophy_case, season_habits, recent_form, season_vs_history, history_in_week_number) "
                     "are optional colour: work in one or two when they are genuinely interesting or sharpen a joke this week, and skip the "
-                    "rest - never recite stats. season_vs_history notables are good for giving a historically bad team its flowers when it's "
+                    "rest - never recite stats. lopsided_trade_so_far, when present, is fair game for a dig at the losing side. season_vs_history notables are good for giving a historically bad team its flowers when it's "
                     "finally good (or burying a usual contender who's collapsing). If records_broken has anything, give it a mention. Past punishments in the league notes are fair game "
                     "when a trophy case shows a last place.")
         resp = client.beta.messages.create(
@@ -703,6 +766,11 @@ def _preview_changes(old, new):
         return out
     a, b = sides(old), sides(new)
     out = []
+    seen = {json.dumps(x, sort_keys=True) for x in old.get("trades_this_week") or []}
+    for x in new.get("trades_this_week") or []:
+        if json.dumps(x, sort_keys=True) not in seen:
+            out.append("new trade since the earlier column: " + "; ".join(
+                f"{sd['team']} got " + (", ".join(g["player"] for g in sd["got"]) or "draft picks") for sd in x["sides"]))
     for team, (s, g) in b.items():
         if team not in a:
             continue

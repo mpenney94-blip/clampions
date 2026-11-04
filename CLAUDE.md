@@ -86,6 +86,9 @@ and listen for `pageerror`. Run the build without piping its exit code away; an 
   scheduled run (`RIVALRY_REFRESH=1`) only once the last one is `RIVALRY_EVERY_DAYS` (55) old, about every two months.
   Expected cost about $0.10–0.15 a week.
 - To add real-life news, append a dated line to the "Real-life news" section of `dashboard/league_notes.md`.
+- Recap and preview facts carry the week's trades (`commentary.trade_facts`: trades_this_week with season averages and
+  projections or debut games, plus lopsided_trade_so_far for an older trade one side is clearly winning), and new trades
+  show up in the Thursday preview's changes list.
 - Recap and preview facts also carry optional background (head_to_head, trophy_case, season_habits, recent_form,
   season_vs_history, records_broken) built from the earlier seasons' summary.json (`lg.past_sums`); build_all builds past seasons first so
   the current season can read them. season_vs_history is only attached (from week 4) for teams with something notable:
