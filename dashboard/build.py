@@ -218,7 +218,10 @@ def season_churn(lg):
     c = dict(stats.churn(lg))
     by_owner = {lg.owner[r]: n for r, n in lg.team.items()}
     c["travel"] = sorted(({"player": v["player"], "pos": v["pos"], "n": len(set(v["owners"])),
+                           "stints": [dict(y, team_html=esc(y["team"] or "?"), season_over=lg.complete) for y in v.get("stints") or []],
                            "path": [esc(by_owner.get(o, "?")) for o in v["owners"]]} for v in c["travel"].values()), key=lambda t: -t["n"])
+    for r in c["repeat_adds"]:
+        r["stints"] = [dict(y, season_over=lg.complete) for y in r.get("stints") or []]
     return render.churn_html(c, lambda r: f'<span class="team">{esc(r["team"] or "?")}</span>')
 
 

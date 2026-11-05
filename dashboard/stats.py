@@ -276,14 +276,24 @@ def churn(lg, top=10):
     draft_cuts = sorted((row(x) for x in ss if x["how"] == "draft" and x["ended"] == "drop"), key=lambda r: r["secs"])[:top]
     quick = sorted((row(x) for x in ss if x["how"] in ("waiver", "free_agent") and x["ended"] == "drop"), key=lambda r: r["secs"])[:top]
     held = sorted((row(x) for x in ss if x["how"] in ("waiver", "free_agent")), key=lambda r: (-(r["secs"] // 86400), -r["pts"]))[:top]
+    def stint(x):
+        r = row(x)
+        return {"team": r["team"], "owner": x["owner"], "how": x["how"], "added": round(x["start"]),
+                "left": round(x["end"]) if x["end"] else None, "ended": x["ended"], "start_wk": r["start_wk"],
+                "games": r["games"], "pts": r["pts"]}
+
     adds = collections.Counter((x["owner"], x["pid"]) for x in ss if x["how"] in ("waiver", "free_agent"))
     repeat = [{"owner": o, "team": next((lg.team[r] for r in lg.team if lg.owner[r] == o), None), "player": lg.name_of(p),
-               "pos": lg.pos_of(p), "adds": n} for (o, p), n in adds.most_common() if n >= 2][:top]
+               "pos": lg.pos_of(p), "adds": n,
+               "stints": [stint(x) for x in sorted(ss, key=lambda x: x["start"]) if x["owner"] == o and x["pid"] == p]}
+              for (o, p), n in adds.most_common() if n >= 2][:top]
     teams = collections.defaultdict(list)
     for x in sorted(ss, key=lambda x: x["start"]):
         if not teams[x["pid"]] or teams[x["pid"]][-1] != x["owner"]:
             teams[x["pid"]].append(x["owner"])
-    travel = {p: {"player": lg.name_of(p), "pos": lg.pos_of(p), "owners": os_} for p, os_ in teams.items()
+    travel = {p: {"player": lg.name_of(p), "pos": lg.pos_of(p), "owners": os_,
+                  "stints": [stint(x) for x in sorted(ss, key=lambda x: x["start"]) if x["pid"] == p]}
+              for p, os_ in teams.items()
               if len(set(os_)) >= 2 and lg.pos_of(p) not in ("K", "DEF")}  # streamed kickers and defenses would swamp it
     return {"draft_cuts": draft_cuts, "quick_cuts": quick, "longest_held": held, "repeat_adds": repeat, "travel": travel}
 

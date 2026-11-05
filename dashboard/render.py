@@ -420,19 +420,49 @@ def churn_html(c, team, season=False, n=10):
                lambda x: who_cell(x) + f'<td class="n team">{fmt_dur(x["secs"])}{(" (rest of season)" if x.get("season_over") else " and counting") if x.get("ongoing") else ""}'
                                        f'<div class="muted" style="font-size:12px">added wk {x["start_wk"]} · {scored(x)}</div></td>',
                "No pickups yet.")
-    rep = lst("Can’t quit him", "", c["repeat_adds"],
-              lambda x: who_cell(x) + f'<td class="n team">{x["adds"]} adds</td>', "Nobody has added the same player twice.")
-    trav = lst("Most teams", "", c["travel"],
-               lambda x: f'<td><b>{esc(x["player"])}</b> <span class="muted">{x["pos"] or ""}</span>'
-                         f'<div style="font-size:12px">{" → ".join(x["path"])}</div></td><td class="n team">{x["n"]} teams</td>',
-               "Nobody has moved around yet.")
+    how_s = {"draft": "drafted", "waiver": "waiver claim", "free_agent": "free agent", "trade": "trade", "commissioner": "commissioner"}
+
+    def when(ts):
+        return dt.datetime.fromtimestamp(ts, dt.timezone.utc).astimezone(PT).strftime("%b %-d, %-I:%M %p").replace("AM", "am").replace("PM", "pm")
+
+    def stint_rows(st, show_team):
+        out = []
+        for y in st:
+            gone = (f'{"traded" if y["ended"] == "trade" else "dropped"} {when(y["left"])}' if y["left"] else "still on the roster"
+                    if not y.get("season_over") else "kept")
+            out.append(f'<tr><td class="muted">wk {y["start_wk"]}</td>'
+                       + (f'<td><span class="team">{y["team_html"]}</span></td>' if show_team else '')
+                       + f'<td>{how_s.get(y["how"], y["how"])} {when(y["added"]) if y["how"] != "draft" else ""}'
+                       f'<div class="muted" style="font-size:12px">{gone}' + (f' · {fmt_dur(y["left"] - y["added"])} later' if y["left"] else "") + '</div></td>'
+                       f'<td class="n team">' + (f'{y["games"]} g · {y["pts"]:.1f}' if y["games"] else '<span class="muted">0 g</span>') + '</td></tr>')
+        return f'<div class="xpin"><table class="picks">{"".join(out)}</table></div>'
+
+    def xlst(key, title, rows, head, extra, detail, empty):
+        body = "".join(f'<tr class="xrow" tabindex="0" role="button" aria-expanded="false" aria-controls="{key}-{i}"><td class="muted">{i}</td>'
+                       f'{head(x)}{extra(x)}</tr><tr class="xdetail" id="{key}-{i}" hidden><td colspan="3">{detail(x)}</td></tr>'
+                       for i, x in enumerate(rows[:n], 1))
+        return (f'<div class="panel scroll"><h3>{title}</h3>'
+                + (f'<table class="expand">{body}</table>' if body else f'<p class="muted">{empty}</p>') + '</div>')
+
+    chev = '<span class="chev" aria-hidden="true">▸</span> '
+    pre = "at" if season else "s"
+    rep = xlst(f"{pre}-rep", "Can’t quit him", c["repeat_adds"],
+               lambda x: f'<td>{chev}<b>{esc(x["player"])}</b> <span class="muted">{x["pos"] or ""}</span><div style="font-size:12px">{ssn(x)}{team(x)}</div></td>',
+               lambda x: f'<td class="n team">{x["adds"]} adds</td>',
+               lambda x: stint_rows(x.get("stints") or [], False), "Nobody has added the same player twice.")
+    trav = xlst(f"{pre}-trav", "Most teams", c["travel"],
+                lambda x: f'<td>{chev}<b>{esc(x["player"])}</b> <span class="muted">{x["pos"] or ""}</span>'
+                          f'<div style="font-size:12px">{" → ".join(x["path"])}</div></td>',
+                lambda x: f'<td class="n team">{x["n"]} teams</td>',
+                lambda x: stint_rows(x.get("stints") or [], True), "Nobody has moved around yet.")
     return (f'<div class="grid2">{draft}{quick}{held}{rep}</div><div style="margin-top:14px">{trav}</div>'
             '<p class="note">Built from Sleeper’s transaction timestamps, so stays are measured to the second. Quickest cuts after the '
             'draft = drafted players dropped soonest after the draft ended. Shortest stays = waiver and free-agent adds dropped fastest '
             '(games and points while on that roster). Longest-held pickups = waiver and free-agent adds kept the longest, still there '
             'counts to today. Can’t quit him = the same player added by the same team again and again. Most teams = players who have '
             'been on the most different rosters (traded players included; kickers and defenses left out, since everyone streams them)'
-            + (', across every season since 2023.' if season else '.') + '</p>')
+            + (', across every season since 2023' if season else '') + '. Click a player in those two for every add and drop (times are Pacific), '
+            'with games and points while he was there.</p>')
 
 
 def trade_cards(trades):
@@ -2415,9 +2445,16 @@ def alltime_sections(sums):
         c = x.get("churn") or {}
         for k in allc:
             allc[k] += [dict(r, season=x["season"]) for r in c.get(k, [])]
+        for r in allc["repeat_adds"]:
+            if r.get("season") == x["season"]:
+                for y in r.get("stints") or []:
+                    y["season_over"] = x["complete"]
         for pid, v in (c.get("travel") or {}).items():
             t = trips[pid]
             t["player"], t["pos"] = v["player"], v["pos"]
+            t.setdefault("stints", [])
+            t["stints"] += [dict(y, team_html=who(y["owner"], y["team"]) + f' <span class="muted">{x["season"]}</span>', season_over=x["complete"])
+                            for y in v.get("stints") or []]
             for o in v["owners"]:
                 if not t["stops"] or t["stops"][-1] != o:
                     t["stops"].append(o)
@@ -2425,7 +2462,7 @@ def alltime_sections(sums):
     allc["quick_cuts"].sort(key=lambda r: r["secs"])
     allc["longest_held"].sort(key=lambda r: (-(r["secs"] // 86400), -r["pts"]))
     allc["repeat_adds"].sort(key=lambda r: -r["adds"])
-    allc["travel"] = sorted(({"player": t["player"], "pos": t["pos"], "n": len(set(t["stops"])),
+    allc["travel"] = sorted(({"player": t["player"], "pos": t["pos"], "n": len(set(t["stops"])), "stints": t.get("stints") or [],
                               "path": [esc(name.get(o, "?")) for o in t["stops"]]} for t in trips.values()), key=lambda t: -t["n"])
     churn_at = churn_html(allc, lambda r: who(r["owner"], r.get("team")), season=True) if any(allc.values()) else '<div class="panel muted">No data yet.</div>'
 
