@@ -77,14 +77,14 @@ and listen for `pageerror`. Run the build without piping its exit code away; an 
 
 ## Written columns (Claude)
 
-- Model `claude-sonnet-5-5` with server-side fallbacks, `ANTHROPIC_API_KEY` from the repo secret. Current season only;
+- Model `claude-opus-5-5` (effort medium, set explicitly) with server-side fallbacks, `ANTHROPIC_API_KEY` from the repo secret. Current season only;
   finished seasons use the built-in writer.
 - Cached in `.cache/commentary` (Actions cache) as {paras, facts}. A recap, or a preview of a week already played, is
   written once and kept. The live preview is rewritten when `COMMENTARY_REFRESH=1` (Tuesday and Thursday scheduled runs and
   manual runs); a rewrite gets the earlier column and `_preview_changes` (lineup holes fixed, injuries, flipped favorites)
   so Thursday can call out what changed since Tuesday. The rivalry column (8–10 paragraphs) is rewritten on the Tuesday
   scheduled run (`RIVALRY_REFRESH=1`) only once the last one is `RIVALRY_EVERY_DAYS` (55) old, about every two months.
-  Expected cost about $0.10–0.15 a week.
+  Expected cost about $0.20–0.30 a week (Opus 5.5 is twice Sonnet 5.5's per-token price).
 - To add real-life news, append a dated line to the "Real-life news" section of `dashboard/league_notes.md`.
 - Recap and preview facts carry the week's trades (`commentary.trade_facts`: trades_this_week with season averages and
   projections or debut games, plus lopsided_trade_so_far for an older trade one side is clearly winning), and new trades
@@ -100,7 +100,7 @@ and listen for `pageerror`. Run the build without piping its exit code away; an 
 
 ## Open options offered to the owner
 
-- Go back to Opus for the columns (or Opus for the recap only) if Sonnet's writing drops off.
+- Back to Sonnet 5.5 for the columns (half the cost) if Opus isn't worth it; or Opus for the recap only.
 - Leave out drops where the player never played for the team that cut him.
 - Kicker column for points a miss cost versus making it.
 - Flagged away: count partial yards taken back on non-touchdown plays with a spot foul.
