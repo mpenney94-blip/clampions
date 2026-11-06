@@ -19,7 +19,7 @@ from dashboard import weekly
 from dashboard import stats
 from dashboard.stats import _optimal
 
-MODEL = "claude-sonnet-5-5"
+MODEL = "claude-opus-5-5"
 CACHE = os.environ.get("COMMENTARY_CACHE", os.path.join(".cache", "commentary"))  # Claude's columns, keyed by their facts
 
 
