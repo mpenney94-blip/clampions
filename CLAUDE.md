@@ -40,6 +40,9 @@ and listen for `pageerror`. Run the build without piping its exit code away; an 
 
 - Each change goes on its own branch, then a PR is opened and merged with `expectedHeadSha`, then the deploy is confirmed
   by polling the live site or the Actions run.
+- Batch rapid-fire requests: in November 2026 GitHub briefly suspended the account for bot-like activity (100+ automated
+  PRs and builds in a few days). When several changes come in a row, put them on one branch and one PR rather than a PR
+  each, and poll deploys gently (one check a minute or so, not every few seconds). Keep a local `git bundle` backup handy.
 - Commit trailers: `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` and the `Claude-Session:` link.
 - Pushing to `main` under `dashboard/**`, `sleeper.py`, `winprob.py` or the workflow triggers a build. Code changes
   invalidate the finished-season cache (key = hash of the code), so past seasons rebuild in parallel.
