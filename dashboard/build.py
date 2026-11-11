@@ -303,6 +303,10 @@ def build(league_id, out, with_winprob=True, tabs="", past_sums=None):
                     for r, rows in stats.flex_usage(lg).items()), key=lambda x: -sum(v for *_, v in x["weeks"])), lg.weeks)),
         "waivers": ("Waiver wire", pickups_chart(lg)),
         "churn": ("Roster churn", season_churn(lg)),
+        "perfect-bids": ("Perfect bids", render.perfect_bids_html(
+            stats.perfect_bids(lg), lambda r: f'<span class="team">{esc(r["team"])}</span>',
+            lambda r: ", ".join(f'<span class="team">{esc(t)}</span>' for t in r["runners"]),
+            lambda o: next((n for rr, n in lg.team.items() if lg.owner[rr] == o), "?"))),
         "waiver-wars": ("Waiver wars", '<p class="lede">Players more than one team put in a claim for, who won them, and what the losing bidders missed out on.</p>'
                         + render.waiver_wars(*stats.waiver_wars(lg), sorted(lg.team.values(), key=str.lower))),
         "overbids": ("Waiver overbids", '<p class="lede">How much FAAB each team spent beyond what it took to win, and how often its claims came through.</p>'
@@ -324,7 +328,7 @@ def build(league_id, out, with_winprob=True, tabs="", past_sums=None):
         ("scoring", "Scoring", f"Weeks 1–{last}: how many points every team put up, how lucky it was, and where the points came from.",
          ["standings", "trends", "projections", "close", "peaks", "flags", "kickers", "coaches", "schedule", "carry", "boom-bust", "team-grid"]),
         ("roster", "Roster", "Trades, byes, injuries, lineup calls and the waiver wire.",
-         ["trades", "byes", "injuries", "ages", "bench", "flex", "waivers", "churn", "waiver-wars", "overbids", "drops", "position"]),
+         ["trades", "byes", "injuries", "ages", "bench", "flex", "waivers", "churn", "waiver-wars", "perfect-bids", "overbids", "drops", "position"]),
         ("draft-group", "Draft", "How the draft played out, and how much each team still leans on it.",
          ["draft-grades", "draft", "draft-board", "redraft", "rounds", "payoff", "sources"]),
     ]
@@ -391,7 +395,7 @@ def alltime_page(name, tabs, sums):
         ("at-rivalries", "Rivalries", "Every manager against every other manager.", ["head-to-head", "rivalries", "streaks"]),
         ("at-records", "Records", "The best and worst single games and seasons, and who the schedule has favored.", ["record-book", "big-games", "bench-disasters", "alltime-carry", "by-week", "luck", "injury-luck"]),
         ("at-moves", "Roster moves", "Keepers, drafts, trades and the waiver wire across every season.",
-         ["keepers", "draft-history", "alltime-trades", "tendencies", "alltime-flex", "alltime-sources", "alltime-overbids", "loyalty", "moves", "alltime-churn"]),
+         ["keepers", "draft-history", "alltime-trades", "tendencies", "alltime-flex", "alltime-sources", "alltime-overbids", "alltime-perfect-bids", "loyalty", "moves", "alltime-churn"]),
     ]
     groups = [(gid, g, blurb, [k for k in keys if k in S]) for gid, g, blurb, keys in groups]
     placed = {k for *_, keys in groups for k in keys}

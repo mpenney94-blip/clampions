@@ -298,6 +298,23 @@ def churn(lg, top=10):
     return {"draft_cuts": draft_cuts, "quick_cuts": quick, "longest_held": held, "repeat_adds": repeat, "travel": travel}
 
 
+def perfect_bids(lg):
+    """Contested waiver claims won by exactly $1 over the next-highest bid."""
+    claims, _ = waiver_wars(lg)
+    owner = {n: lg.owner[r] for r, n in lg.team.items()}
+    out = []
+    for c in claims:
+        top = c["losers"][0]["bid"]
+        if c["win_bid"] - top != 1:
+            continue
+        out.append({"player": c["player"], "pos": c["pos"], "week": c["week"], "team": c["winner"], "owner": owner.get(c["winner"]),
+                    "bid": c["win_bid"], "runner_bid": top,
+                    "runners": sorted({x["team"] for x in c["losers"] if x["bid"] == top}),
+                    "runner_owners": sorted({owner.get(x["team"]) for x in c["losers"] if x["bid"] == top} - {None}),
+                    "bidders": 1 + len({x["team"] for x in c["losers"]}), "since": round(c["since"], 1), "games": c["games"]})
+    return sorted(out, key=lambda x: -x["since"])
+
+
 def waiver_wars(lg):
     """Waiver claims more than one team made for the same player, and what the losers missed."""
     runs = collections.defaultdict(list)  # (player, waiver run time) -> every claim on him in that run
@@ -902,6 +919,7 @@ def season_summary(lg):
         "keepers": keepers, "trades": trade_rows, "games": games, "rostered": rostered,
         "big_games": big_games, "bench_weeks": bench_weeks, "startsit": start_sit(lg),
         "churn": churn(lg),
+        "perfect_bids": perfect_bids(lg),
         "flex": {lg.owner[r]: _flex_totals(rows) for r, rows in flex_usage(lg).items()}, "lineups": score_lineups(lg),
         "draft": [{"owner": by_name.get(z["team"]), "team": z["team"], "round": z["round"], "pick": z["pick"], "player": z["player"],
                    "pos": z["pos"], "pts": round(z["pts"], 1), "value": round(z["value"], 1), "keeper": z["keeper"]} for z in draft(lg)],
