@@ -465,6 +465,30 @@ def churn_html(c, team, season=False, n=10):
             'with games and points while he was there.</p>')
 
 
+def perfect_bids_html(rows, team, runner, name_of, season=False):
+    """Contested waiver claims won by exactly $1. team(row) / runner(row) -> html for the winner / the $1-short bidder(s);
+    name_of(owner) -> plain name for the leader line."""
+    if not rows:
+        return '<div class="panel muted">No contested claim has been won by exactly $1 yet.</div>'
+    counts = collections.Counter(r["owner"] for r in rows if r.get("owner"))
+    lead = ""
+    if counts:
+        top = counts.most_common(1)[0][1]
+        names = [esc(name_of(o)) for o, n in counts.items() if n == top]
+        lead = f'<p class="lede" style="margin-top:0">Most perfect bids: {", ".join(names)} ({top}).</p>'
+    trs = "".join(
+        f'<tr><td class="muted rank">{i}</td><td data-v="{esc(r["player"].lower())}"><b>{esc(r["player"])}</b> <span class="muted">{r["pos"] or ""}</span>'
+        f'<div class="muted" style="font-size:12px">' + (f'{r["season"]} · ' if season else '') + f'week {r["week"]} · {r["bidders"]} bidders</div></td>'
+        f'<td>{team(r)}</td><td class="n team" data-v="{r["bid"]}">${r["bid"]}</td>'
+        f'<td data-v="{r["runner_bid"]}">${r["runner_bid"]} <span class="muted">from</span> {runner(r)}</td>'
+        f'<td class="n" data-v="{r["since"]}">{r["since"]:.1f}<div class="muted" style="font-size:12px">{r["games"]} games</div></td></tr>'
+        for i, r in enumerate(rows, 1))
+    return (f'{lead}<div class="panel scroll"><table class="sortable"><thead><tr><th>#</th><th>Player</th><th>Won by</th><th class="n">Winning bid</th>'
+            f'<th>Next-highest bid</th><th class="n">Points since</th></tr></thead><tbody>{trs}</tbody></table></div>'
+            '<p class="note">Perfect bids: waiver claims where more than one team bid and the winner beat the next-highest bid by exactly $1. '
+            'Points since = what the player scored from that week on' + (' that season' if season else '') + '. Click a column header to sort.</p>')
+
+
 def trade_cards(trades):
     if not trades:
         return '<div class="panel muted">No trades yet.</div>'
@@ -2466,6 +2490,13 @@ def alltime_sections(sums):
                               "path": [esc(name.get(o, "?")) for o in t["stops"]]} for t in trips.values()), key=lambda t: -t["n"])
     churn_at = churn_html(allc, lambda r: who(r["owner"], r.get("team")), season=True) if any(allc.values()) else '<div class="panel muted">No data yet.</div>'
 
+    # perfect bids, every season
+    pb = sorted((dict(r, season=x["season"]) for x in sums for r in x.get("perfect_bids") or []), key=lambda r: -r["since"])
+    perfect_html = perfect_bids_html(
+        pb, lambda r: who(r["owner"], r["team"]) if r.get("owner") else esc(r["team"]),
+        lambda r: ", ".join(who(o) for o in r.get("runner_owners") or []) or esc(", ".join(r["runners"])),
+        lambda o: name.get(o, "?"), season=True)
+
     # flex usage, every season
     fpos = [p for p in ("RB", "WR", "TE", "QB") if any(p in f for x in sums for f in x.get("flex", {}).values())]
     ftot = collections.defaultdict(lambda: collections.defaultdict(lambda: [0, 0.0]))
@@ -2519,7 +2550,7 @@ def alltime_sections(sums):
             ("big-games", "Best single-game performances", big_games_html), ("bench-disasters", "Biggest bench disasters", bench_html),
             ("luck", "All-time luck", luck_html), ("injury-luck", "Injury luck", injury_html), ("streaks", "Streaks", streak_html), ("keepers", "Keepers", keep_html),
             ("draft-history", "Draft history", draft_html), ("alltime-trades", "Most lopsided trades", trade_html),
-            ("tendencies", "Manager tendencies", tendencies), ("alltime-flex", "Flex usage", flex_html), ("alltime-sources", "Drafted vs. picked up", sources_html), ("alltime-carry", "Who carried each team", carry_html), ("by-week", "By week of the season", by_week_html), ("alltime-overbids", "Waiver overbids", overbids),
+            ("tendencies", "Manager tendencies", tendencies), ("alltime-flex", "Flex usage", flex_html), ("alltime-sources", "Drafted vs. picked up", sources_html), ("alltime-carry", "Who carried each team", carry_html), ("by-week", "By week of the season", by_week_html), ("alltime-overbids", "Waiver overbids", overbids), ("alltime-perfect-bids", "Perfect bids", perfect_html),
             ("loyalty", "Who sticks with their guys", loyalty),
             ("moves", "Best pickups and worst drops", moves), ("alltime-churn", "Roster churn", churn_at)]
 
