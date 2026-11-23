@@ -855,6 +855,24 @@ def big_days(lg, top=20):
     return (games, sorted(bench_, key=lambda b: -b["gap"])[:top])
 
 
+def game_list(lg):
+    """[week, owner, points, owner, points, playoff?] for every regular-season game, plus winners-bracket playoff games of a
+    finished season (not the 5th-place game, often two knocked-out teams with empty lineups)."""
+    own = lg.owner
+    games = []
+    for w in lg.weeks:
+        sc = lg.scores(w)
+        for a, b in {tuple(sorted(pair)) for pair in lg.opponent(w).items()}:
+            games.append([w, own[a], round(sc[a], 2), own[b], round(sc[b], 2), False])
+    if lg.complete and lg.playoff_start:
+        for m in winprob._fetch(f"https://api.sleeper.app/v1/league/{lg.id}/winners_bracket") or []:
+            a, b, w = m.get("t1"), m.get("t2"), lg.playoff_start + m["r"] - 1
+            if a and b and m.get("p") != 5:
+                sc = {x["roster_id"]: x["points"] or 0.0 for x in lg.client.matchups(lg.id, w)}
+                games.append([w, own[a], round(sc.get(a, 0), 2), own[b], round(sc.get(b, 0), 2), True])
+    return games
+
+
 def season_summary(lg):
     """Everything the all-time page needs from one season, keyed by manager (Sleeper owner id), as plain JSON."""
     rec = {r: [0, 0, 0] for r in lg.team}
@@ -901,17 +919,7 @@ def season_summary(lg):
         sides = [{"owner": by_name.get(sd["team"]), "team": sd["team"], "total": round(sd["total"], 1), "picks": sd["picks"],
                   "got": [{"player": g["player"], "pos": g["pos"], "since": round(g["since"], 1)} for g in sd["got"]]} for sd in t["sides"]]
         trade_rows.append({"week": t["weeks"][0] if t["weeks"] else None, "sides": sides})
-    games = []  # [week, owner, points, owner, points, playoff?] for head-to-head records
-    for w in lg.weeks:
-        sc = lg.scores(w)
-        for a, b in {tuple(sorted(pair)) for pair in lg.opponent(w).items()}:
-            games.append([w, own[a], round(sc[a], 2), own[b], round(sc[b], 2), False])
-    if lg.complete and lg.playoff_start:
-        for m in winprob._fetch(f"https://api.sleeper.app/v1/league/{lg.id}/winners_bracket") or []:
-            a, b, w = m.get("t1"), m.get("t2"), lg.playoff_start + m["r"] - 1
-            if a and b and m.get("p") != 5:  # the 5th-place game is two knocked-out teams, often with empty lineups
-                sc = {x["roster_id"]: x["points"] or 0.0 for x in lg.client.matchups(lg.id, w)}
-                games.append([w, own[a], round(sc.get(a, 0), 2), own[b], round(sc.get(b, 0), 2), True])
+    games = game_list(lg)
     pickups_ = sorted(pickups(lg), key=lambda a: -(a["total"] + a["after_trade"]))[:15]
     big_games, bench_weeks = big_days(lg)
     return {

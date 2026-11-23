@@ -489,6 +489,55 @@ def perfect_bids_html(rows, team, runner, name_of, season=False):
             'Points since = what the player scored from that week on' + (' that season' if season else '') + '. Click a column header to sort.</p>')
 
 
+def sub100_html(games, who, key, season_col=False, cutoff=100):
+    """Wins with fewer than `cutoff` points. games: [(season, week, owner a, score a, owner b, score b, playoff?)];
+    who(owner, season) -> team html. Each week's average and the all-play count use every score from that week's games."""
+    week_scores = collections.defaultdict(list)
+    for x, w, a, sa, b, sb, pl in games:
+        week_scores[(x, w, pl)] += [sa, sb]
+    wins = collections.defaultdict(list)
+    total_wins = collections.Counter()
+    for x, w, a, sa, b, sb, pl in games:
+        for me, m, them, t in ((a, sa, b, sb), (b, sb, a, sa)):
+            if m > t:
+                total_wins[me] += 1
+                if m < cutoff:
+                    others = [v for v in week_scores[(x, w, pl)]]
+                    others.remove(m)
+                    wins[me].append({"season": x, "week": w, "playoff": pl, "score": m, "opp": them, "opp_score": t,
+                                     "avg": sum(week_scores[(x, w, pl)]) / len(week_scores[(x, w, pl)]),
+                                     "beat": sum(1 for v in others if m > v), "of": len(others)})
+    owners = sorted(total_wins, key=lambda o: (-len(wins[o]), min((r["score"] for r in wins[o]), default=999)))
+    if not any(wins.values()):
+        return f'<div class="panel muted">No wins under {cutoff} points yet.</div>'
+    trs = []
+    for i, o in enumerate(owners):
+        ws = sorted(wins[o], key=lambda r: r["score"])
+        n = len(ws)
+        low = ws[0] if ws else None
+        det = "".join(
+            f'<tr><td class="n team">{r["score"]:.2f}</td><td class="muted">' + (f'{r["season"]} ' if season_col else '')
+            + f'wk {r["week"]}{" (playoffs)" if r["playoff"] else ""}</td>'
+            f'<td>beat {who(r["opp"], r["season"])} <span class="muted">{r["opp_score"]:.2f}</span></td>'
+            f'<td class="n">league avg {r["avg"]:.1f} <span class="{"neg" if r["score"] < r["avg"] else "pos"}">({r["score"] - r["avg"]:+.1f})</span></td>'
+            f'<td class="n">would have beaten {r["beat"]} of {r["of"]}</td></tr>' for r in ws)
+        det = f'<div class="xpin"><table class="picks">{det}</table></div>' if ws else '<span class="muted">None.</span>'
+        trs.append(f'<tr class="xrow" tabindex="0" role="button" aria-expanded="false" aria-controls="{key}-{i}">'
+                   f'<td style="white-space:nowrap" data-v="{esc(re.sub("<[^>]+>", "", who(o, None)).lower())}"><span class="chev" aria-hidden="true">▸</span> {who(o, None)}</td>'
+                   f'<td class="n team" data-v="{n}">{n}</td><td class="n" data-v="{n / total_wins[o] if total_wins[o] else 0:.4f}">'
+                   f'{n / total_wins[o] if total_wins[o] else 0:.0%} <span class="muted">of {total_wins[o]} wins</span></td>'
+                   f'<td class="n" data-v="{low["score"] if low else 999}">' + (f'{low["score"]:.2f} <span class="muted">' + (f'{low["season"]} ' if season_col else '') + f'wk {low["week"]}</span>' if low else '<span class="muted">—</span>') + '</td>'
+                   f'<td class="n" data-v="{sum(r["beat"] / r["of"] for r in ws) / n if n else 9:.4f}">' + (f'{sum(r["beat"] for r in ws) / n:.1f}' if n else '<span class="muted">—</span>') + '</td></tr>'
+                   f'<tr class="xdetail" id="{key}-{i}" hidden><td colspan="5">{det}</td></tr>')
+    return (f'<div class="panel scroll"><table class="sortable expand"><thead><tr><th>Team</th><th class="n">Sub-{cutoff} wins</th>'
+            f'<th class="n">Share of wins</th><th class="n">Lowest winning score</th><th class="n">Avg teams outscored</th></tr></thead>'
+            f'<tbody>{"".join(trs)}</tbody></table></div>'
+            f'<p class="note">Wins with fewer than {cutoff} points' + (', every season since 2023 (regular season and playoff games)' if season_col else '')
+            + '. Avg teams outscored = how many of the other teams that week the winning score would have beaten, on average '
+            '(a low number means a lucky win). Click a team for each win: score, week, opponent, that week’s league average and '
+            'how many teams the score would have beaten. Click a column header to sort.</p>')
+
+
 def trade_cards(trades):
     if not trades:
         return '<div class="panel muted">No trades yet.</div>'
@@ -2497,6 +2546,11 @@ def alltime_sections(sums):
         lambda r: ", ".join(who(o) for o in r.get("runner_owners") or []) or esc(", ".join(r["runners"])),
         lambda o: name.get(o, "?"), season=True)
 
+    # sub-100 wins, every season
+    at_games = [(x["season"], w, a, sa, b, sb, pl) for x in sums for w, a, sa, b, sb, pl in x.get("games", [])]
+    season_team = {(x["season"], o): z["team"] for x in sums for o, z in x["teams"].items()}
+    sub100_at = sub100_html(at_games, lambda o, s_: who(o, season_team.get((s_, o))) if s_ else who(o), "atsub", season_col=True)
+
     # flex usage, every season
     fpos = [p for p in ("RB", "WR", "TE", "QB") if any(p in f for x in sums for f in x.get("flex", {}).values())]
     ftot = collections.defaultdict(lambda: collections.defaultdict(lambda: [0, 0.0]))
@@ -2548,7 +2602,7 @@ def alltime_sections(sums):
             ("finishes", "Where everyone finished", finishes), ("champions", "Champions and last places", champs),
             ("playoff-records", "Playoff records", playoffs_html), ("record-book", "Record book", record_book),
             ("big-games", "Best single-game performances", big_games_html), ("bench-disasters", "Biggest bench disasters", bench_html),
-            ("luck", "All-time luck", luck_html), ("injury-luck", "Injury luck", injury_html), ("streaks", "Streaks", streak_html), ("keepers", "Keepers", keep_html),
+            ("luck", "All-time luck", luck_html), ("injury-luck", "Injury luck", injury_html), ("sub100", "Sub-100 wins", sub100_at), ("streaks", "Streaks", streak_html), ("keepers", "Keepers", keep_html),
             ("draft-history", "Draft history", draft_html), ("alltime-trades", "Most lopsided trades", trade_html),
             ("tendencies", "Manager tendencies", tendencies), ("alltime-flex", "Flex usage", flex_html), ("alltime-sources", "Drafted vs. picked up", sources_html), ("alltime-carry", "Who carried each team", carry_html), ("by-week", "By week of the season", by_week_html), ("alltime-overbids", "Waiver overbids", overbids), ("alltime-perfect-bids", "Perfect bids", perfect_html),
             ("loyalty", "Who sticks with their guys", loyalty),
