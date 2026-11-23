@@ -24,6 +24,7 @@ from dashboard.render import esc
 SECTION_NEW = {
     "perfect-bids": "2026-11-11", "alltime-perfect-bids": "2026-11-11",
     "sub100": "2026-11-23", "highloss": "2026-11-23",
+    "fruit-ninja": "2026-11-23",
 }
 NEW_DAYS = 14
 
@@ -342,6 +343,9 @@ def build(league_id, out, with_winprob=True, tabs="", past_sums=None):
         "redraft": ("Redraft", render.redraft_table(dx)) if dx else None,
         "payoff": ("Which positions paid off", render.payoff_table(dx)) if dx else None,
         "sources": ("Drafted vs. picked up", render.source_bars(src)),
+        "fruit-ninja": ("Fruit Ninja Fractalverse", '<p class="lede">What if your first-round pick had been someone else’s? Pick a '
+                        'team and another first-rounder to replay the season.</p>' + render.fractal_html(stats.fractalverse(lg)))
+                       if int(lg.season) >= 2026 else None,
         "draft": ("Draft report card", draft_chart(lg)),
         "rounds": ("Points by draft round", render.round_table(src, max((p["round"] for p in lg.picks), default=0))),
     })
@@ -353,7 +357,7 @@ def build(league_id, out, with_winprob=True, tabs="", past_sums=None):
         ("roster", "Roster", "Trades, byes, injuries, lineup calls and the waiver wire.",
          ["trades", "byes", "injuries", "ages", "bench", "flex", "waivers", "churn", "waiver-wars", "perfect-bids", "overbids", "drops", "position"]),
         ("draft-group", "Draft", "How the draft played out, and how much each team still leans on it.",
-         ["draft-grades", "draft", "draft-board", "redraft", "rounds", "payoff", "sources"]),
+         ["draft-grades", "draft", "draft-board", "redraft", "rounds", "payoff", "sources", "fruit-ninja"]),
     ]
     groups = [(gid, name, blurb, [k for k in keys if S.get(k)]) for gid, name, blurb, keys in groups]
     toc = ('<nav class="toc" aria-label="Sections">'

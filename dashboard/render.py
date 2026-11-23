@@ -561,6 +561,85 @@ def score_threshold_html(games, who, key, season_col=False, mode="win"):
             'how many teams the score would have beaten. Pick a threshold from the menu; click a column header to sort.</p>')
 
 
+def fractal_html(f):
+    """Fruit Ninja Fractalverse: a team's record with a different first-round pick. All combinations are prebuilt (stats.fractalverse)."""
+    if not f or not f["teams"]:
+        return '<div class="panel muted">No first round yet.</div>'
+    rec = lambda r: f"{r[0]}-{r[1]}" + (f"-{r[2]}" if r[2] else "")
+    data = {"teams": f["teams"], "players": f["players"],
+            "results": {str(r): v for r, v in f["results"].items()}, "avg": f["avg_r1"]}
+    team_opts = "".join(f'<option value="{t["rid"]}">{esc(t["team"])}</option>' for t in f["teams"])
+    # best and worst swap per team
+    trs = []
+    for t in f["teams"]:
+        res = f["results"][t["rid"]]
+        name = {p["pid"]: p["name"] for p in f["players"]}
+        wins = lambda v: v["record"][0] + v["record"][2] / 2
+        best = max(res.items(), key=lambda kv: (wins(kv[1]), kv[1]["pf"]))
+        worst = min(res.items(), key=lambda kv: (wins(kv[1]), kv[1]["pf"]))
+        base = t["record"][0] + t["record"][2] / 2
+        trs.append(f'<tr><td class="team" data-v="{esc(t["team"].lower())}">{esc(t["team"])}</td>'
+                   f'<td data-v="{esc(t["own"].lower())}">{esc(t["own"])} <span class="muted">{t["own_pos"]}</span></td>'
+                   f'<td class="n team" data-v="{base}">{rec(t["record"])}</td>'
+                   f'<td data-v="{wins(best[1]) - base}">{esc(name[best[0]])} <b>{rec(best[1]["record"])}</b> '
+                   f'<span class="pos">{wins(best[1]) - base:+g}</span></td>'
+                   f'<td data-v="{wins(worst[1]) - base}">{esc(name[worst[0]])} <b>{rec(worst[1]["record"])}</b> '
+                   f'<span class="neg">{wins(worst[1]) - base:+g}</span></td></tr>')
+    summary = ('<div class="panel scroll" style="margin-top:14px"><h3>Best and worst swap for every team</h3><table class="sortable"><thead><tr>'
+               '<th>Team</th><th>Actual first-rounder</th><th class="n">Record</th><th>Best swap</th><th>Worst swap</th></tr></thead>'
+               f'<tbody>{"".join(trs)}</tbody></table></div>')
+    return (f'<div class="panel" id="fn-box"><div class="hl-bar" style="flex-wrap:wrap;gap:8px 14px">'
+            f'<label for="fn-team">Team</label><select id="fn-team" autocomplete="off">{team_opts}</select>'
+            f'<label for="fn-player">Swap in</label><select id="fn-player" autocomplete="off"></select></div>'
+            f'<div id="fn-out"></div></div>{summary}'
+            f'<p class="note">Swap a team’s first-round pick for any other first-rounder and replay its season (regular season, through '
+            f'week {f["through"]}). The swapped-in player starts every week he plays: in the real pick’s spot, or, when the real pick '
+            'was out or on bye, in place of the lowest-scoring starter at a spot he can fill. When he didn’t play, the best eligible '
+            'bench player fills the real pick’s spot. Against the team that actually drafted him, his points come off their score and '
+            f'the average first-rounder’s weekly score ({f["avg_r1"]:.1f}, from games first-rounders actually played) goes in instead.</p>'
+            f'<script type="application/json" id="fn-data">{json.dumps(data, ensure_ascii=False).replace("</", "<\\/")}</script>'
+            + """<script>
+(function () {
+  var D = JSON.parse(document.getElementById('fn-data').textContent);
+  var team = document.getElementById('fn-team'), player = document.getElementById('fn-player'), out = document.getElementById('fn-out');
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]; }); }
+  function rec(r) { return r[0] + '-' + r[1] + (r[2] ? '-' + r[2] : ''); }
+  function fillPlayers() {
+    var rid = +team.value, keep = player.value;
+    player.innerHTML = D.players.filter(function (p) { return p.rid !== rid; }).map(function (p) {
+      return '<option value="' + p.pid + '">' + esc(p.name) + ' (' + p.pos + ', pick ' + p.pick + ', ' + esc(p.by) + ')</option>';
+    }).join('');
+    if (keep && player.querySelector('option[value="' + keep + '"]')) player.value = keep;
+  }
+  function show() {
+    var t = D.teams.filter(function (x) { return x.rid === +team.value; })[0];
+    var r = (D.results[team.value] || {})[player.value];
+    var p = D.players.filter(function (x) { return x.pid === player.value; })[0];
+    if (!t || !r || !p) { out.innerHTML = ''; return; }
+    var w0 = t.record[0] + t.record[2] / 2, w1 = r.record[0] + r.record[2] / 2, d = w1 - w0;
+    var head = '<p style="font-size:17px;margin:12px 0 10px"><span class="team">' + esc(t.team) + '</span> with <b>' + esc(p.name) +
+      '</b> instead of ' + esc(t.own) + ': <b>' + rec(r.record) + '</b> <span class="muted">(actually ' + rec(t.record) + ')</span> ' +
+      '<span class="' + (d > 0 ? 'pos' : d < 0 ? 'neg' : 'muted') + '">' + (d > 0 ? '+' : '') + d + ' wins</span>' +
+      ' <span class="muted">· PF ' + r.pf.toFixed(1) + ' (' + (r.pf - t.pf >= 0 ? '+' : '') + (r.pf - t.pf).toFixed(1) + ')</span></p>';
+    var rows = r.weeks.map(function (x) {
+      var flip = x[6] !== x[7];
+      var cls = flip ? (x[7] === 'W' ? 'pos' : 'neg') : 'muted';
+      return '<tr><td class="muted">Wk ' + x[0] + '</td><td>vs <span class="team">' + esc(x[1]) + '</span></td>' +
+        '<td class="n">' + x[2].toFixed(1) + ' → <b>' + x[3].toFixed(1) + '</b></td>' +
+        '<td class="n">' + (x[4] !== x[5] ? x[4].toFixed(1) + ' → <b>' + x[5].toFixed(1) + '</b>' : x[4].toFixed(1)) + '</td>' +
+        '<td class="n ' + cls + '"><b>' + x[6] + (flip ? ' → ' + x[7] : '') + '</b></td>' +
+        '<td class="muted" style="font-size:12px">' + esc(x[8]) + '</td></tr>';
+    }).join('');
+    out.innerHTML = head + '<div class="scroll"><table><thead><tr><th>Week</th><th>Opponent</th><th class="n">Score</th>' +
+      '<th class="n">Opponent</th><th class="n">Result</th><th>Swap</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+  }
+  team.addEventListener('change', function () { fillPlayers(); show(); });
+  player.addEventListener('change', show);
+  fillPlayers(); show();
+})();
+</script>""")
+
+
 def trade_cards(trades):
     if not trades:
         return '<div class="panel muted">No trades yet.</div>'
