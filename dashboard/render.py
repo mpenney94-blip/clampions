@@ -489,53 +489,75 @@ def perfect_bids_html(rows, team, runner, name_of, season=False):
             'Points since = what the player scored from that week on' + (' that season' if season else '') + '. Click a column header to sort.</p>')
 
 
-def sub100_html(games, who, key, season_col=False, cutoff=100):
-    """Wins with fewer than `cutoff` points. games: [(season, week, owner a, score a, owner b, score b, playoff?)];
-    who(owner, season) -> team html. Each week's average and the all-play count use every score from that week's games."""
+def score_games_html(games, who, key, season_col=False, cutoff=100, mode="win"):
+    """mode "win": wins with fewer than `cutoff` points; mode "loss": losses with more than `cutoff` points.
+    games: [(season, week, owner a, score a, owner b, score b, playoff?)]; who(owner, season) -> team html.
+    Each week's average and the all-play count use every score from that week's games."""
+    win = mode == "win"
     week_scores = collections.defaultdict(list)
     for x, w, a, sa, b, sb, pl in games:
         week_scores[(x, w, pl)] += [sa, sb]
-    wins = collections.defaultdict(list)
-    total_wins = collections.Counter()
+    hits = collections.defaultdict(list)
+    total = collections.Counter()
     for x, w, a, sa, b, sb, pl in games:
         for me, m, them, t in ((a, sa, b, sb), (b, sb, a, sa)):
-            if m > t:
-                total_wins[me] += 1
-                if m < cutoff:
-                    others = [v for v in week_scores[(x, w, pl)]]
+            if (m > t) if win else (m < t):
+                total[me] += 1
+                if (m < cutoff) if win else (m > cutoff):
+                    others = list(week_scores[(x, w, pl)])
                     others.remove(m)
-                    wins[me].append({"season": x, "week": w, "playoff": pl, "score": m, "opp": them, "opp_score": t,
+                    hits[me].append({"season": x, "week": w, "playoff": pl, "score": m, "opp": them, "opp_score": t,
                                      "avg": sum(week_scores[(x, w, pl)]) / len(week_scores[(x, w, pl)]),
                                      "beat": sum(1 for v in others if m > v), "of": len(others)})
-    owners = sorted(total_wins, key=lambda o: (-len(wins[o]), min((r["score"] for r in wins[o]), default=999)))
-    if not any(wins.values()):
-        return f'<div class="panel muted">No wins under {cutoff} points yet.</div>'
+    extreme = (lambda rs: min(r["score"] for r in rs)) if win else (lambda rs: max(r["score"] for r in rs))
+    owners = sorted(total, key=lambda o: (-len(hits[o]), (extreme(hits[o]) if hits[o] else 999) * (1 if win else -1)))
+    noun, verb, opp_word = ("wins", "won", "beat") if win else ("losses", "lost", "lost to")
+    label = f"Sub-{cutoff} {noun}" if win else f"{cutoff}+ point {noun}"
+    if not any(hits.values()):
+        return f'<div class="panel muted">No {noun} {"under" if win else "over"} {cutoff} points yet.</div>'
     trs = []
     for i, o in enumerate(owners):
-        ws = sorted(wins[o], key=lambda r: r["score"])
-        n = len(ws)
-        low = ws[0] if ws else None
+        rs = sorted(hits[o], key=lambda r: r["score"] if win else -r["score"])
+        n = len(rs)
+        top = rs[0] if rs else None
         det = "".join(
             f'<tr><td class="n team">{r["score"]:.2f}</td><td class="muted">' + (f'{r["season"]} ' if season_col else '')
             + f'wk {r["week"]}{" (playoffs)" if r["playoff"] else ""}</td>'
-            f'<td>beat {who(r["opp"], r["season"])} <span class="muted">{r["opp_score"]:.2f}</span></td>'
+            f'<td>{opp_word} {who(r["opp"], r["season"])} <span class="muted">{r["opp_score"]:.2f}</span></td>'
             f'<td class="n">league avg {r["avg"]:.1f} <span class="{"neg" if r["score"] < r["avg"] else "pos"}">({r["score"] - r["avg"]:+.1f})</span></td>'
-            f'<td class="n">would have beaten {r["beat"]} of {r["of"]}</td></tr>' for r in ws)
-        det = f'<div class="xpin"><table class="picks">{det}</table></div>' if ws else '<span class="muted">None.</span>'
+            f'<td class="n">would have beaten {r["beat"]} of {r["of"]}</td></tr>' for r in rs)
+        det = f'<div class="xpin"><table class="picks">{det}</table></div>' if rs else '<span class="muted">None.</span>'
+        avg_beat = sum(r["beat"] for r in rs) / n if n else None
         trs.append(f'<tr class="xrow" tabindex="0" role="button" aria-expanded="false" aria-controls="{key}-{i}">'
                    f'<td style="white-space:nowrap" data-v="{esc(re.sub("<[^>]+>", "", who(o, None)).lower())}"><span class="chev" aria-hidden="true">▸</span> {who(o, None)}</td>'
-                   f'<td class="n team" data-v="{n}">{n}</td><td class="n" data-v="{n / total_wins[o] if total_wins[o] else 0:.4f}">'
-                   f'{n / total_wins[o] if total_wins[o] else 0:.0%} <span class="muted">of {total_wins[o]} wins</span></td>'
-                   f'<td class="n" data-v="{low["score"] if low else 999}">' + (f'{low["score"]:.2f} <span class="muted">' + (f'{low["season"]} ' if season_col else '') + f'wk {low["week"]}</span>' if low else '<span class="muted">—</span>') + '</td>'
-                   f'<td class="n" data-v="{sum(r["beat"] / r["of"] for r in ws) / n if n else 9:.4f}">' + (f'{sum(r["beat"] for r in ws) / n:.1f}' if n else '<span class="muted">—</span>') + '</td></tr>'
+                   f'<td class="n team" data-v="{n}">{n}</td><td class="n" data-v="{n / total[o] if total[o] else 0:.4f}">'
+                   f'{n / total[o] if total[o] else 0:.0%} <span class="muted">of {total[o]} {noun}</span></td>'
+                   f'<td class="n" data-v="{top["score"] if top else (999 if win else 0)}">'
+                   + (f'{top["score"]:.2f} <span class="muted">' + (f'{top["season"]} ' if season_col else '') + f'wk {top["week"]}</span>' if top else '<span class="muted">—</span>') + '</td>'
+                   f'<td class="n" data-v="{avg_beat if avg_beat is not None else (99 if win else -1):.4f}">' + (f'{avg_beat:.1f}' if n else '<span class="muted">—</span>') + '</td></tr>'
                    f'<tr class="xdetail" id="{key}-{i}" hidden><td colspan="5">{det}</td></tr>')
-    return (f'<div class="panel scroll"><table class="sortable expand"><thead><tr><th>Team</th><th class="n">Sub-{cutoff} wins</th>'
-            f'<th class="n">Share of wins</th><th class="n">Lowest winning score</th><th class="n">Avg teams outscored</th></tr></thead>'
-            f'<tbody>{"".join(trs)}</tbody></table></div>'
-            f'<p class="note">Wins with fewer than {cutoff} points' + (', every season since 2023 (regular season and playoff games)' if season_col else '')
-            + '. Avg teams outscored = how many of the other teams that week the winning score would have beaten, on average '
-            '(a low number means a lucky win). Click a team for each win: score, week, opponent, that week’s league average and '
-            'how many teams the score would have beaten. Click a column header to sort.</p>')
+    return (f'<div class="panel scroll"><table class="sortable expand"><thead><tr><th>Team</th><th class="n">{label}</th>'
+            f'<th class="n">Share of {noun}</th><th class="n">{"Lowest winning" if win else "Highest losing"} score</th>'
+            f'<th class="n">Avg teams outscored</th></tr></thead><tbody>{"".join(trs)}</tbody></table></div>')
+
+
+def score_threshold_html(games, who, key, season_col=False, mode="win"):
+    """score_games_html for a range of thresholds, with a menu that shows one at a time."""
+    win = mode == "win"
+    cuts = [100, 95, 90, 85, 80] if win else [110, 115, 120, 125, 130]
+    sel = (f'<div class="hl-bar"><label for="{key}-cut">{"Wins under" if win else "Losses over"}</label>'
+           f'<select id="{key}-cut" data-swap="{key}" autocomplete="off">'
+           + "".join(f'<option value="{c}"{" selected" if i == 0 else ""}>{c} points</option>' for i, c in enumerate(cuts))
+           + '</select></div>')
+    panes = "".join(f'<div data-swap-pane="{key}" data-cut="{c}"{"" if i == 0 else " hidden"}>'
+                    f'{score_games_html(games, who, f"{key}{c}", season_col, c, mode)}</div>' for i, c in enumerate(cuts))
+    scope = ', every season since 2023 (regular season and playoff games)' if season_col else ''
+    note = ((f'Wins with fewer than the chosen number of points{scope}. Avg teams outscored = how many of the other teams that week '
+             'the winning score would have beaten, on average (low = a lucky win).') if win else
+            (f'Losses with more than the chosen number of points{scope}. Avg teams outscored = how many of the other teams that week '
+             'the losing score would have beaten, on average (high = an unlucky loss).'))
+    return (f'{sel}{panes}<p class="note">{note} Click a team for each game: score, week, opponent, that week’s league average and '
+            'how many teams the score would have beaten. Pick a threshold from the menu; click a column header to sort.</p>')
 
 
 def trade_cards(trades):
@@ -964,6 +986,13 @@ def team_grids(lg_name, grids, weeks, totals):
 
 
 HIGHLIGHT_JS = """<script>
+// threshold menus: show the pane that matches the chosen value
+document.querySelectorAll('select[data-swap]').forEach(function (sel) {
+  var key = sel.getAttribute('data-swap');
+  sel.addEventListener('change', function () {
+    document.querySelectorAll('[data-swap-pane="' + key + '"]').forEach(function (p) { p.hidden = p.getAttribute('data-cut') !== sel.value; });
+  });
+});
 document.querySelectorAll('.tipwrap').forEach(function (w) {
   function close(e) { e.preventDefault(); e.stopPropagation(); w.classList.add('closed'); w.blur(); }
   w.addEventListener('pointerdown', function (e) { if (!e.target.closest('.tip-close')) w.classList.remove('closed'); });
@@ -2549,7 +2578,9 @@ def alltime_sections(sums):
     # sub-100 wins, every season
     at_games = [(x["season"], w, a, sa, b, sb, pl) for x in sums for w, a, sa, b, sb, pl in x.get("games", [])]
     season_team = {(x["season"], o): z["team"] for x in sums for o, z in x["teams"].items()}
-    sub100_at = sub100_html(at_games, lambda o, s_: who(o, season_team.get((s_, o))) if s_ else who(o), "atsub", season_col=True)
+    at_who = lambda o, s_: who(o, season_team.get((s_, o))) if s_ else who(o)
+    sub100_at = score_threshold_html(at_games, at_who, "atsub", season_col=True, mode="win")
+    highloss_at = score_threshold_html(at_games, at_who, "atloss", season_col=True, mode="loss")
 
     # flex usage, every season
     fpos = [p for p in ("RB", "WR", "TE", "QB") if any(p in f for x in sums for f in x.get("flex", {}).values())]
@@ -2602,7 +2633,7 @@ def alltime_sections(sums):
             ("finishes", "Where everyone finished", finishes), ("champions", "Champions and last places", champs),
             ("playoff-records", "Playoff records", playoffs_html), ("record-book", "Record book", record_book),
             ("big-games", "Best single-game performances", big_games_html), ("bench-disasters", "Biggest bench disasters", bench_html),
-            ("luck", "All-time luck", luck_html), ("injury-luck", "Injury luck", injury_html), ("sub100", "Sub-100 wins", sub100_at), ("streaks", "Streaks", streak_html), ("keepers", "Keepers", keep_html),
+            ("luck", "All-time luck", luck_html), ("injury-luck", "Injury luck", injury_html), ("sub100", "Low-scoring wins", sub100_at), ("highloss", "High-scoring losses", highloss_at), ("streaks", "Streaks", streak_html), ("keepers", "Keepers", keep_html),
             ("draft-history", "Draft history", draft_html), ("alltime-trades", "Most lopsided trades", trade_html),
             ("tendencies", "Manager tendencies", tendencies), ("alltime-flex", "Flex usage", flex_html), ("alltime-sources", "Drafted vs. picked up", sources_html), ("alltime-carry", "Who carried each team", carry_html), ("by-week", "By week of the season", by_week_html), ("alltime-overbids", "Waiver overbids", overbids), ("alltime-perfect-bids", "Perfect bids", perfect_html),
             ("loyalty", "Who sticks with their guys", loyalty),
