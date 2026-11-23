@@ -267,6 +267,8 @@ def build(league_id, out, with_winprob=True, tabs="", past_sums=None):
     div_names = {int(k.split("_")[1]): v for k, v in meta.items() if k.startswith("division_") and k.split("_")[1].isdigit()}
     odds = {}
     hub = week_hub(lg, last, with_winprob, wp_cache, odds, div_names)
+    season_games = [(lg.season, *g) for g in stats.game_list(lg) if not g[5]]
+    team_html = lambda o, _s: f'<span class="team">{esc(next((n for r, n in lg.team.items() if lg.owner[r] == o), "?"))}</span>'
     inj_rows = weekly.injuries(lg)
     proj_rows, proj_over, proj_under = weekly.vs_projection(lg)
     tr_rows, tr_league = weekly.trends(lg)
@@ -286,9 +288,8 @@ def build(league_id, out, with_winprob=True, tabs="", past_sums=None):
         "coaches": ("Coaches who cost kickers", '<p class="lede">Field goal chances in range that coaches passed up, and what they cost kicker owners.</p>'
                     + render.coach_section(weekly.coach_summary(lg))),
         "close": ("Close games", render.close_table(*weekly.close_games(lg))),
-        "sub100": ("Sub-100 wins", render.sub100_html(
-            [(lg.season, *g) for g in stats.game_list(lg) if not g[5]],
-            lambda o, _s: f'<span class="team">{esc(next((n for r, n in lg.team.items() if lg.owner[r] == o), "?"))}</span>', "sub")),
+        "sub100": ("Low-scoring wins", render.score_threshold_html(season_games, team_html, "sub", mode="win")),
+        "highloss": ("High-scoring losses", render.score_threshold_html(season_games, team_html, "loss", mode="loss")),
         "schedule": ("Schedule swap", '<p class="lede">Every team’s record if it had played each other team’s schedule.</p>' + render.swap_table(order, grid)),
         "carry": ("Who carried each team", render.carry_bars(stats.carry(lg))),
         "boom-bust": ("Boom or bust", boom_bust_chart(lg)),
@@ -329,7 +330,7 @@ def build(league_id, out, with_winprob=True, tabs="", past_sums=None):
         ("this-week", "This week", f"What happened in week {last} and what’s coming next. These change every week.",
          [k for k, _, _ in hub] + ["history"]),
         ("scoring", "Scoring", f"Weeks 1–{last}: how many points every team put up, how lucky it was, and where the points came from.",
-         ["standings", "trends", "projections", "close", "sub100", "peaks", "flags", "kickers", "coaches", "schedule", "carry", "boom-bust", "team-grid"]),
+         ["standings", "trends", "projections", "close", "sub100", "highloss", "peaks", "flags", "kickers", "coaches", "schedule", "carry", "boom-bust", "team-grid"]),
         ("roster", "Roster", "Trades, byes, injuries, lineup calls and the waiver wire.",
          ["trades", "byes", "injuries", "ages", "bench", "flex", "waivers", "churn", "waiver-wars", "perfect-bids", "overbids", "drops", "position"]),
         ("draft-group", "Draft", "How the draft played out, and how much each team still leans on it.",
@@ -396,7 +397,7 @@ def alltime_page(name, tabs, sums):
         ("at-standings", "Standings", "Who has won, who has lost, and where everyone finished.",
          ["alltime-standings", "finishes", "champions", "playoff-records"]),
         ("at-rivalries", "Rivalries", "Every manager against every other manager.", ["head-to-head", "rivalries", "streaks"]),
-        ("at-records", "Records", "The best and worst single games and seasons, and who the schedule has favored.", ["record-book", "big-games", "bench-disasters", "alltime-carry", "by-week", "sub100", "luck", "injury-luck"]),
+        ("at-records", "Records", "The best and worst single games and seasons, and who the schedule has favored.", ["record-book", "big-games", "bench-disasters", "alltime-carry", "by-week", "sub100", "highloss", "luck", "injury-luck"]),
         ("at-moves", "Roster moves", "Keepers, drafts, trades and the waiver wire across every season.",
          ["keepers", "draft-history", "alltime-trades", "tendencies", "alltime-flex", "alltime-sources", "alltime-overbids", "alltime-perfect-bids", "loyalty", "moves", "alltime-churn"]),
     ]
