@@ -33,6 +33,8 @@ and listen for `pageerror`. Run the build without piping its exit code away; an 
 - Expandable rows (`tr.xrow` + `tr.xdetail`, via `_xrows`) stay attached when sorted; tables inside expanded rows are skipped.
   Any `table.expand` with 2+ dropdown rows gets an "Expand all / Collapse all" button automatically.
 - Grid/heatmap tables use `.grid-t`, with headers centered over their cells.
+- When a section is added or meaningfully changed, add its id and the date to `SECTION_NEW` in `dashboard/build.py`: the
+  top menu tags it with an italic "new" for 14 days (`NEW_DAYS`), judged at build time.
 - Every `section[id] > h2` gets a "Save image" button (html2canvas from cdnjs, loaded on first use) that captures the
   section as currently shown (sections holding a `[data-nosnap]` element, like the Past weeks tabs, are skipped). html2canvas can't parse `color-mix()`, so use plain colors or the `--t1`..`--t6` tints.
 

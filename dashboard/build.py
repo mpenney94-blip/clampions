@@ -18,6 +18,25 @@ from dashboard import commentary, render, stats, weekly
 from dashboard.render import esc
 
 
+# Sections added or changed recently: section id -> date (YYYY-MM-DD). The top menu of the current season and the all-time
+# page tags them "new" for NEW_DAYS after (finished seasons are cached, so a tag there could outstay its two weeks).
+# Add an entry whenever a table is added or meaningfully changed; old entries can stay (they simply stop showing).
+SECTION_NEW = {
+    "perfect-bids": "2026-11-11", "alltime-perfect-bids": "2026-11-11",
+    "sub100": "2026-11-23", "highloss": "2026-11-23",
+}
+NEW_DAYS = 14
+
+
+def new_tag(key, today=None):
+    when = SECTION_NEW.get(key)
+    if not when:
+        return ""
+    today = today or dt.datetime.now(render.PT).date()
+    age = (today - dt.date.fromisoformat(when)).days
+    return '&nbsp;<em class="newtag">new</em>' if 0 <= age < NEW_DAYS else ""  # nbsp keeps the tag with the last word
+
+
 def winprob_section(lg, week, cache):
     if week not in cache:
         try:
@@ -339,7 +358,7 @@ def build(league_id, out, with_winprob=True, tabs="", past_sums=None):
     groups = [(gid, name, blurb, [k for k in keys if S.get(k)]) for gid, name, blurb, keys in groups]
     toc = ('<nav class="toc" aria-label="Sections">'
            + "".join(f'<div class="grp"><span><a href="#{gid}" style="all:unset;cursor:pointer">{name}</a></span>'
-                     + "".join(f'<a href="#{k}">{esc(S[k][0])}</a>' for k in keys) + '</div>' for gid, name, _, keys in groups)
+                     + "".join(f'<a href="#{k}">{esc(S[k][0])}{"" if lg.complete else new_tag(k)}</a>' for k in keys) + '</div>' for gid, name, _, keys in groups)
            + '</nav>')
     when = (f"{lg.season} season · final" + (f" · 🏆 {esc(lg.champion)}" if lg.champion else "")) if lg.complete else f"{lg.season} season · through week {last}"
     body = (f'{tabs}<header class="site"><div><div class="eyebrow">{when}</div><h1>{esc(lg.name)}</h1></div></header>{toc}'
@@ -407,7 +426,7 @@ def alltime_page(name, tabs, sums):
         groups.append(("at-more", "More", "", [k for k in S if k not in placed]))
     toc = ('<nav class="toc" aria-label="Sections">'
            + "".join(f'<div class="grp"><span><a href="#{gid}" style="all:unset;cursor:pointer">{g}</a></span>'
-                     + "".join(f'<a href="#{k}">{esc(S[k][0])}</a>' for k in keys) + '</div>' for gid, g, _, keys in groups)
+                     + "".join(f'<a href="#{k}">{esc(S[k][0])}{new_tag(k)}</a>' for k in keys) + '</div>' for gid, g, _, keys in groups)
            + '</nav>')
     body = (f'{tabs}<header class="site"><div><div class="eyebrow">{sums[-1]["season"]}–{sums[0]["season"]} on Sleeper</div>'
             f'<h1>{esc(name)}: all-time</h1></div></header>{toc}'

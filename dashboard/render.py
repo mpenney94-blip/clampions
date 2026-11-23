@@ -41,6 +41,7 @@ nav.toc .grp{background:var(--surface);border:1px solid var(--rule);border-radiu
 nav.toc .grp>span{display:block;font:700 13px var(--display);letter-spacing:.1em;text-transform:uppercase;color:var(--a);
  padding-bottom:6px;margin-bottom:6px;border-bottom:1px solid var(--rule)}
 nav.toc .grp>a{display:block;font-size:15px;line-height:1.35;color:var(--ink);text-decoration:none;padding:4px 0;break-inside:avoid}
+.newtag{font:italic 600 12px var(--body);color:var(--a);margin-left:4px;letter-spacing:.02em}
 nav.toc .grp>a:hover{color:var(--a);text-decoration:underline;text-underline-offset:3px}
 nav.toc .grp:only-child{grid-column:1/-1;columns:200px}
 nav.toc .grp:only-child>span{column-span:all}
