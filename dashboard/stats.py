@@ -315,6 +315,104 @@ def perfect_bids(lg):
     return sorted(out, key=lambda x: -x["since"])
 
 
+def fractalverse(lg):
+    """First-round what-ifs: for every team and every other first-round pick B, the team's record had B been its first-
+    rounder all season instead of its own pick A.
+      - B starts every week he plays: in A's spot when A started, otherwise in place of the lowest-scoring starter in a
+        slot B is eligible for (A was out or on bye).
+      - B doesn't play: A's spot (if A started) goes to the best eligible bench player.
+      - Against the team that actually drafted B, that team's score loses B's points (if he started for it) and gets the
+        average first-rounder's weekly score instead (over games first-rounders actually played).
+    Regular season only."""
+    r1 = sorted((p for p in lg.picks if p["round"] == 1 and p.get("roster_id") in lg.team), key=lambda p: p["pick_no"])
+    if not r1 or not lg.weeks:
+        return None
+    pick_of = {p["roster_id"]: p["player_id"] for p in r1}
+    drafter = {p["player_id"]: p["roster_id"] for p in r1}
+    r1_games = [lg.pts[p["player_id"]].get(w, 0) for p in r1 for w in lg.weeks if p["player_id"] in lg.played[w]]
+    avg_r1 = sum(r1_games) / len(r1_games) if r1_games else 0.0
+    weeks = [w for w in lg.weeks if w in lg.reg_weeks]
+    mu = {w: {m["roster_id"]: m for m in lg.matchups[w]} for w in weeks}
+    opp = {w: lg.opponent(w) for w in weeks}
+
+    def ok(slot, pid):
+        return lg.pos_of(pid) in FLEX.get(slot, (slot,))
+
+    def score_with(r, w, A, B):
+        m = mu[w][r]
+        score = m["points"] or 0.0
+        st, sp = m["starters"], m.get("starters_points") or []
+        pts = {p: (v or 0.0) for p, v in zip(st, sp)}
+        bench = {p: v for p, v in (m.get("players_points") or {}).items() if p not in st}
+        b_played = B in lg.played[w]
+        b_pts = lg.pts.get(B, {}).get(w, 0.0) if b_played else 0.0
+        note = ""
+        if B in st:  # already in this lineup (came over in a trade): nothing to add
+            return score, "already in the lineup"
+        if A in st:
+            slot = lg.slots[st.index(A)]
+            if b_played:
+                return score - pts[A] + b_pts, f"{lg.name_of(B)} {b_pts:.1f} for {lg.name_of(A)} {pts[A]:.1f}"
+            fill = max(((v, p) for p, v in bench.items() if p != A and ok(slot, p)), default=(0.0, None))
+            return score - pts[A] + fill[0], (f"{lg.name_of(B)} out: {lg.name_of(fill[1])} {fill[0]:.1f} off the bench for "
+                                              f"{lg.name_of(A)} {pts[A]:.1f}" if fill[1] else f"{lg.name_of(B)} out, empty slot")
+        if b_played:
+            spots = [(pts[p], p) for i, p in enumerate(st) if p != "0" and ok(lg.slots[i], B)]
+            spots += [(0.0, None) for i, p in enumerate(st) if p == "0" and ok(lg.slots[i], B)]
+            if spots:
+                low = min(spots, key=lambda t: t[0])
+                return score - low[0] + b_pts, (f"{lg.name_of(B)} {b_pts:.1f} for {lg.name_of(low[1])} {low[0]:.1f}"
+                                                if low[1] else f"{lg.name_of(B)} {b_pts:.1f} in an empty slot")
+        return score, note
+
+    def result(a, b):
+        return "W" if a > b else "L" if a < b else "T"
+
+    teams, out = [], {}
+    for r in lg.team:
+        A = pick_of.get(r)
+        if not A:
+            continue
+        actual = [0, 0, 0]
+        pf = 0.0
+        for w in weeks:
+            o = opp[w].get(r)
+            if o is None:
+                continue
+            a_, b_ = mu[w][r]["points"] or 0, mu[w][o]["points"] or 0
+            actual["WLT".index(result(a_, b_))] += 1
+            pf += a_
+        teams.append({"rid": r, "team": lg.team[r], "own": lg.name_of(A), "own_pos": lg.pos_of(A), "record": actual, "pf": round(pf, 1)})
+        out[r] = {}
+        for p in r1:
+            B = p["player_id"]
+            if B == A:
+                continue
+            rec, npf, rows = [0, 0, 0], 0.0, []
+            for w in weeks:
+                o = opp[w].get(r)
+                if o is None:
+                    continue
+                act, oact = mu[w][r]["points"] or 0.0, mu[w][o]["points"] or 0.0
+                new, note = score_with(r, w, A, B)
+                onew = oact
+                if o == drafter.get(B):
+                    om = mu[w][o]
+                    if B in om["starters"]:
+                        bpts = (om.get("starters_points") or [])[om["starters"].index(B)] or 0.0
+                        onew = oact - bpts + avg_r1
+                rec["WLT".index(result(new, onew))] += 1
+                npf += new
+                rows.append([w, lg.team[o], round(act, 2), round(new, 2), round(oact, 2), round(onew, 2),
+                             result(act, oact), result(new, onew), note])
+            out[r][B] = {"record": rec, "pf": round(npf, 1), "weeks": rows}
+    players = [{"pid": p["player_id"], "name": lg.name_of(p["player_id"]), "pos": lg.pos_of(p["player_id"]), "pick": p["pick_no"],
+                "by": lg.team[p["roster_id"]], "rid": p["roster_id"],
+                "ppg": round(sum(lg.pts[p["player_id"]].get(w, 0) for w in lg.weeks if p["player_id"] in lg.played[w])
+                             / max(1, sum(1 for w in lg.weeks if p["player_id"] in lg.played[w])), 1)} for p in r1]
+    return {"teams": teams, "players": players, "results": out, "avg_r1": round(avg_r1, 2), "through": weeks[-1]}
+
+
 def waiver_wars(lg):
     """Waiver claims more than one team made for the same player, and what the losers missed."""
     runs = collections.defaultdict(list)  # (player, waiver run time) -> every claim on him in that run
