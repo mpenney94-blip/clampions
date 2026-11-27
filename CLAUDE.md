@@ -9,6 +9,8 @@ https://mpenney94-blip.github.io/clampions/
 - `winprob.py`: ESPN scoreboard and play-by-play helpers, projections, and the play-by-play win probability model. `espn_games()` returns ids, teams, home team and ESPN team ids.
 - `dashboard/stats.py`: `League` (one season's data) plus season stats, `season_summary()` (feeds the all-time page).
 - `dashboard/weekly.py`: playoff odds and clinches, power, awards, preview, trends, byes/injuries, career days, flagged plays, kicking.
+- `dashboard/nemesis.py`: Nemeses (the NFL players who scored the most against each team from opponents' lineups), season
+  and all-time (from `nemeses` in each summary.json). The same file is in the Clampions and BBLOT repos.
 - `dashboard/commentary.py`: fact sheets and the Claude-written columns (recap, preview, rivalry), with a built-in fallback writer.
 - `dashboard/league_notes.md`: league lore fed to the column writer (duck hunt and past punishments, pronouns: she/her for the
   ValueVolplane manager and he for everyone else, puns, dated real-life news). `commentary.SHE` holds the she/her owner ids.
