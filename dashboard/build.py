@@ -36,7 +36,8 @@ def new_tag(key, today=None):
         return ""
     today = today or dt.datetime.now(render.PT).date()
     age = (today - dt.date.fromisoformat(when)).days
-    return '&nbsp;<em class="newtag">new</em>' if 0 <= age < NEW_DAYS else ""  # nbsp keeps the tag with the last word
+    # a date a little ahead (an entry dated in UTC, built on the Pacific day before) still counts as new
+    return '&nbsp;<em class="newtag">new</em>' if age < NEW_DAYS else ""  # nbsp keeps the tag with the last word
 
 
 def winprob_section(lg, week, cache):
