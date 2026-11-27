@@ -13,22 +13,27 @@ def _playoff_games(lg):
     head-to-head and playoff records)."""
     if not lg.playoff_start:
         return []
+    if "_nem_po" in lg.__dict__:
+        return lg._nem_po
     last = lg.info["settings"].get("last_scored_leg") or 0
     out = []
     for m in winprob._fetch(f"https://api.sleeper.app/v1/league/{lg.id}/winners_bracket") or []:
         a, b, w = m.get("t1"), m.get("t2"), lg.playoff_start + m["r"] - 1
         if a and b and m.get("p") != 5 and w <= last:
             out.append((w, a, b))
+    lg._nem_po = out
     return out
 
 
-def season(lg):
+def season(lg, through=None):
     """{roster: {pid: [points, games, Counter(opposing roster -> games), [(week, opposing roster, points) in playoffs]]}}:
     points opponents' starters scored against each team, regular season plus winners-bracket playoff games."""
     out = collections.defaultdict(lambda: collections.defaultdict(lambda: [0.0, 0, collections.Counter(), []]))
     games = [(w, r, o, False) for w in lg.weeks for r, o in lg.opponent(w).items()]
     for w, a, b in _playoff_games(lg):
         games += [(w, a, b, True), (w, b, a, True)]
+    if through is not None:  # as things stood after week `through`
+        games = [g for g in games if g[0] <= through]
     ms_by_week = {}
     for w, r, o, po in games:
         if w not in ms_by_week:
@@ -46,6 +51,41 @@ def season(lg):
             if po:
                 x[3].append((w, o, v or 0))
     return out
+
+
+def week_facts(lg, w, limit=6):
+    """For the week-w recap: players who started against a team this week and rank among that team's three worst
+    all-time nemeses (earlier seasons' summaries plus this season through week w), with what they did this week."""
+    data = season(lg, through=w)
+    past = collections.defaultdict(lambda: collections.defaultdict(float))  # owner -> pid -> points before this season
+    past_g = collections.defaultdict(collections.Counter)
+    for x in getattr(lg, "past_sums", None) or []:
+        for o, ps in (x.get("nemeses") or {}).items():
+            for p, row in ps.items():
+                past[o][p] += row[0]
+                past_g[o][p] += row[1]
+    ms = {m["roster_id"]: m for m in (lg.matchups[w] if w in lg.matchups else lg.client.matchups(lg.id, w))}
+    opp = lg.opponent(w) if w in lg.matchups else {}
+    for wk, a, b in _playoff_games(lg):
+        if wk == w:
+            opp.update({a: b, b: a})
+    out = []
+    for r, o in opp.items():
+        own = lg.owner[r]
+        totals = {p: past[own][p] + v[0] for p, v in data.get(r, {}).items()}
+        totals.update({p: v for p, v in past[own].items() if p not in totals})
+        top = sorted(totals, key=lambda p: -totals[p])[:3]
+        before = {p: totals[p] - pts for p, pts in zip(ms[o]["starters"], ms[o].get("starters_points") or []) if p in totals}
+        top_before = sorted(totals, key=lambda p: -(before.get(p, totals[p])))[:3]
+        for pid, pts in zip(ms[o]["starters"], ms[o].get("starters_points") or []):
+            if pid in top:
+                games = past_g[own][pid] + data[r][pid][1]
+                out.append({"team": lg.team[r], "player": lg.name_of(pid), "pos": lg.pos_of(pid), "started_by": lg.team[o],
+                            "points_this_week": round(pts or 0, 1), "all_time_points_against_team": round(totals[pid], 1),
+                            "all_time_games_against_team": games, "nemesis_rank_for_team": top.index(pid) + 1,
+                            "new_to_top_3": pid not in top_before})
+    out.sort(key=lambda x: -x["points_this_week"])
+    return out[:limit]
 
 
 def _po_text(po):
