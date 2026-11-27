@@ -14,7 +14,7 @@ import random
 import shutil
 
 import winprob
-from dashboard import commentary, render, stats, weekly
+from dashboard import commentary, nemesis, render, stats, weekly
 from dashboard.render import esc
 
 
@@ -22,6 +22,7 @@ from dashboard.render import esc
 # page tags them "new" for NEW_DAYS after (finished seasons are cached, so a tag there could outstay its two weeks).
 # Add an entry whenever a table is added or meaningfully changed; old entries can stay (they simply stop showing).
 SECTION_NEW = {
+    "nemeses": "2026-11-27", "alltime-nemeses": "2026-11-27",
     "perfect-bids": "2026-11-11", "alltime-perfect-bids": "2026-11-11",
     "sub100": "2026-11-23", "highloss": "2026-11-23",
     "fruit-ninja": "2026-11-23",
@@ -302,6 +303,8 @@ def build(league_id, out, with_winprob=True, tabs="", past_sums=None):
         "projections": ("Beating the projections", render.projection_table(proj_rows, proj_over, proj_under, last)),
         "peaks": ("Opponents' career days", '<p class="lede">Did opponents keep having their best game of the year against you?</p>'
                   + render.peaks_switch({k: weekly.opponent_peaks(lg, k) for k in (1, 2, 3)})),
+        "nemeses": ("Nemeses", '<p class="lede">The NFL players who have done the most damage against each team: the most points '
+                    'scored against it from an opponent’s starting lineup.</p>' + nemesis.html(nemesis.season_rows(lg), "nem")),
         "flags": ("Flagged away", '<p class="lede">Fantasy points erased when a big play got called back for a penalty.</p>'
                   + render.flagged_section(weekly.flagged_away(lg))),
         "kickers": ("Kicking distance profile", '<p class="lede">Who gets the long kicks, and who makes them.</p>' + render.kicker_table(weekly.kicker_profile(lg))),
@@ -353,7 +356,7 @@ def build(league_id, out, with_winprob=True, tabs="", past_sums=None):
         ("this-week", "This week", f"What happened in week {last} and what’s coming next. These change every week.",
          [k for k, _, _ in hub] + ["history"]),
         ("scoring", "Scoring", f"Weeks 1–{last}: how many points every team put up, how lucky it was, and where the points came from.",
-         ["standings", "trends", "projections", "close", "sub100", "highloss", "peaks", "flags", "kickers", "coaches", "schedule", "carry", "boom-bust", "team-grid"]),
+         ["standings", "trends", "projections", "close", "sub100", "highloss", "peaks", "nemeses", "flags", "kickers", "coaches", "schedule", "carry", "boom-bust", "team-grid"]),
         ("roster", "Roster", "Trades, byes, injuries, lineup calls and the waiver wire.",
          ["trades", "byes", "injuries", "ages", "bench", "flex", "waivers", "churn", "waiver-wars", "perfect-bids", "overbids", "drops", "position"]),
         ("draft-group", "Draft", "How the draft played out, and how much each team still leans on it.",
@@ -391,6 +394,7 @@ def build(league_id, out, with_winprob=True, tabs="", past_sums=None):
     with open(os.path.join(out, "summary.json"), "w") as f:  # this season's totals, for the all-time page
         summary = stats.season_summary(lg)
         summary["injuries"] = injury_summary(lg, inj_rows)
+        summary["nemeses"] = nemesis.summary(lg)
         summary["sources"] = {lg.owner[r]: {"draft": round(src[n]["draft"], 1), "keeper": round(src[n]["keeper"], 1),
                                             "waiver": round(src[n]["waiver"], 1), "trade": round(src[n]["trade"], 1),
                                             "best": {k: [v[0], round(v[1], 1)] for k, v in src[n]["best"].items()}}
@@ -413,13 +417,19 @@ def seasons(league_id):
 
 def alltime_page(name, tabs, sums):
     secs = render.alltime_sections(sums)
+    cur = {}
+    for x in sums:  # each manager's most recent team name
+        for o, t in (x.get("teams") or {}).items():
+            cur.setdefault(o, t["team"])
+    secs.append(("alltime-nemeses", "Nemeses", '<p class="lede">The NFL players who have done the most damage against each manager, '
+                 'all-time.</p>' + nemesis.html(nemesis.alltime_rows(sums, lambda o: cur.get(o, "?")), "atnem", alltime=True)))
     talk = ("rivalries", "Rivalry trash talk", render.column(*commentary.write("rivalry", render.rivalry_facts(sums)), "the league’s head-to-head history"))
     secs.insert(2, talk)  # right after head to head
     S = {k: (t, h) for k, t, h in secs}
     groups = [
         ("at-standings", "Standings", "Who has won, who has lost, and where everyone finished.",
          ["alltime-standings", "finishes", "champions", "playoff-records"]),
-        ("at-rivalries", "Rivalries", "Every manager against every other manager.", ["head-to-head", "rivalries", "streaks"]),
+        ("at-rivalries", "Rivalries", "Every manager against every other manager.", ["head-to-head", "rivalries", "streaks", "alltime-nemeses"]),
         ("at-records", "Records", "The best and worst single games and seasons, and who the schedule has favored.", ["record-book", "big-games", "bench-disasters", "alltime-carry", "by-week", "sub100", "highloss", "luck", "injury-luck"]),
         ("at-moves", "Roster moves", "Keepers, drafts, trades and the waiver wire across every season.",
          ["keepers", "draft-history", "alltime-trades", "tendencies", "alltime-flex", "alltime-sources", "alltime-overbids", "alltime-perfect-bids", "loyalty", "moves", "alltime-churn"]),
