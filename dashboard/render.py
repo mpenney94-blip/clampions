@@ -122,7 +122,7 @@ nav.seasons.weeks{margin:0}nav.seasons.weeks a{font-size:14px;padding:8px 12px}
 .xall:hover{border-color:var(--a);color:var(--a)}
 .xall-bar{display:flex;justify-content:flex-end;margin-bottom:8px}
 .snapping .xall{display:none}
-.xpin{position:sticky;left:0;width:min(560px,calc(100vw - 64px))}
+.xpin{position:sticky;left:0;width:min(560px,calc(100vw - 64px));overflow-x:auto;-webkit-overflow-scrolling:touch}
 h3.h3-xall{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}h3.h3-xall .xall{margin-left:auto}
 @media (max-width:520px){.snapbtn{font-size:11.5px;padding:3px 9px}}
 section[id]>h2{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
