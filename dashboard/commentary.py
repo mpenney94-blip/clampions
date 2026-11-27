@@ -17,6 +17,7 @@ import re
 
 from dashboard import weekly
 from dashboard import stats
+from dashboard import nemesis
 from dashboard.stats import _optimal
 
 MODEL = "claude-opus-5-5"
@@ -97,6 +98,8 @@ def week_facts(lg, w, wp=None, odds_now=None, odds_prev=None):
         "games_closest_first": games,
         "awards": {k: [v[0], round(v[1], 2) if isinstance(v[1], float) else v[1], v[2]] for k, v in aw.items()},
         "records_broken": records_broken(lg, w),
+        # players who hit a team this week and rank among its three worst all-time nemeses (most points scored against it)
+        **({"nemesis_watch": nw} if (nw := nemesis.week_facts(lg, w)) else {}),
         **trade_facts(lg, w, "recap"),
         **({"team_renames_this_week": rename_facts(lg, w)} if rename_facts(lg, w) else {}),
     }
